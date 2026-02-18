@@ -1334,6 +1334,22 @@ def _df_from_records(records: List[Dict[str, Any]], source: str) -> pd.DataFrame
             or it.get("url")
         )
 
+        # Preserve raw fields / notes for better filtering (e.g., 10b5-1 planned trades)
+        notes_raw = (
+            it.get("remarks")
+            or it.get("remark")
+            or it.get("notes")
+            or it.get("note")
+            or it.get("transactionDescription")
+            or it.get("transaction_description")
+            or it.get("transactionDesc")
+            or it.get("description")
+            or it.get("comment")
+            or it.get("tradingPlan")
+            or it.get("trading_plan")
+            or it.get("plan")
+        )
+
         # Parse numerics robustly
         shares_f = _to_float(shares)
         price_f = _to_float(price)
@@ -1349,6 +1365,8 @@ def _df_from_records(records: List[Dict[str, Any]], source: str) -> pd.DataFrame
         rows.append({
             "Date": dtv.date(),
             "Transaction": _norm_tx_label(tx_raw, ad),
+            "TransactionRaw": (str(tx_raw) if tx_raw is not None else None),
+            "Notes": (str(notes_raw) if notes_raw is not None else None),
             "Position": position or "—",
             "Owner": owner,
             "Security": security,
@@ -1379,7 +1397,7 @@ def _dedupe_insider_df(df: pd.DataFrame) -> pd.DataFrame:
     d = df.copy()
 
     # Ensure expected columns exist
-    for col in ["Date", "Owner", "Code", "Shares", "Price", "Value", "Transaction", "Source", "Position", "Security", "FilingURL"]:
+    for col in ["Date", "Owner", "Code", "Shares", "Price", "Value", "Transaction", "TransactionRaw", "Notes", "Source", "Position", "Security", "FilingURL"]:
         if col not in d.columns:
             d[col] = None
 
@@ -1449,6 +1467,18 @@ def _dedupe_insider_df(df: pd.DataFrame) -> pd.DataFrame:
                 uniq.append(v)
         return ", ".join(uniq) if uniq else ""
 
+    def _join_text(s: pd.Series) -> str:
+        vals = []
+        for x in s.dropna().tolist():
+            sx = _norm_text(x)
+            if sx:
+                vals.append(sx)
+        uniq = []
+        for v in vals:
+            if v not in uniq:
+                uniq.append(v)
+        return " | ".join(uniq) if uniq else ""
+
     # Aggregate: keep first non-null for most fields, but join sources
     agg = {
         "Date": "first",
@@ -1460,6 +1490,8 @@ def _dedupe_insider_df(df: pd.DataFrame) -> pd.DataFrame:
         "Price": "first",
         "Value": "first",
         "Transaction": "first",
+        "TransactionRaw": _join_text,
+        "Notes": _join_text,
         "FilingURL": "first",
         "Source": _join_sources,
     }
@@ -1798,6 +1830,24 @@ def _fetch_insider_from_sec(ticker: str, max_filings: int = 12, max_transactions
             except Exception:
                 officer_title = None
 
+            # Pull remarks/footnotes so we can filter non-informative (10b5-1, tax withholding, etc.)
+            try:
+                remarks_txt = root.findtext(".//{*}remarks") or ""
+            except Exception:
+                remarks_txt = ""
+            footnotes_txt: List[str] = []
+            try:
+                for fn in root.findall(".//{*}footnote"):
+                    try:
+                        t = "".join(list(fn.itertext())).strip()
+                        if t:
+                            footnotes_txt.append(t)
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+            notes_blob = " ".join([remarks_txt] + footnotes_txt).strip() or None
+
             # non-derivative transactions
             for tx in root.findall(".//{*}nonDerivativeTransaction"):
                 dt_val = tx.findtext(".//{*}transactionDate/{*}value") or filing_date
@@ -1826,6 +1876,8 @@ def _fetch_insider_from_sec(ticker: str, max_filings: int = 12, max_transactions
                 rows.append({
                     "Date": dtp.date(),
                     "Transaction": tx_label,
+                    "TransactionRaw": (str(code) if code is not None else None),
+                    "Notes": notes_blob,
                     "Position": officer_title or ("Director/Officer" if owner else "—"),
                     "Value": val_f,
                     "Shares": shares_f,
@@ -1973,7 +2025,7 @@ def fetch_insider_transactions_multi(ticker: str) -> Tuple[Optional[pd.DataFrame
     merged = pd.concat([d for d in dfs if isinstance(d, pd.DataFrame) and not d.empty], ignore_index=True, sort=False)
 
     # Ensure expected columns exist
-    for col in ["Owner", "Position", "Code", "Security", "Shares", "Price", "Value", "Source", "FilingURL", "Transaction", "Date"]:
+    for col in ["Owner", "Position", "Code", "Security", "Shares", "Price", "Value", "Source", "FilingURL", "Transaction", "TransactionRaw", "Notes", "Date"]:
         if col not in merged.columns:
             merged[col] = None
 
@@ -2609,6 +2661,8 @@ def compute_insider_pro_signal(insider_df: Optional[pd.DataFrame]) -> Dict[str, 
     sell_dates: List[dt.datetime] = []
     sell_owners: List[str] = []
 
+    ignored_planned = 0
+
     def _norm(s: Any) -> str:
         try:
             return re.sub(r"\s+", " ", str(s or "")).strip().lower()
@@ -2650,8 +2704,28 @@ def compute_insider_pro_signal(insider_df: Optional[pd.DataFrame]) -> Dict[str, 
             code = str(row.get("Code") or "").strip().upper()
             tx_txt = _norm(row.get("Transaction"))
 
-            # Exclude obvious "noise" rows by text (some providers mark automatic sales, tax withholding, etc.)
-            if any(k in tx_txt for k in ["tax", "withhold", "10b5", "10b5-1", "rule 10b5", "automatic"]):
+            # Exclude "non-informative" rows (10b5-1 plans, tax-withholding sells, option exercises, gifts...)
+            tx_blob = " ".join([
+                str(row.get("TransactionRaw") or ""),
+                str(row.get("Notes") or ""),
+                str(row.get("Transaction") or ""),
+                str(row.get("Security") or ""),
+                str(row.get("Source") or ""),
+                str(row.get("FilingURL") or ""),
+            ])
+            tx_norm = _norm(tx_blob)
+
+            noise_keys = [
+                "10b5", "10b5-1", "10b51", "rule 10b5",
+                "trading plan", "prearranged", "pre-arranged",
+                "automatic", "non-discretionary", "nondiscretionary",
+                "tax", "withhold", "withholding",
+                "sell to cover", "cover taxes", "to cover taxes", "for taxes",
+                "option", "exercise", "vesting", "grant", "award",
+                "gift", "donation", "charity", "conversion", "distribution", "inherit",
+            ]
+            if any(k in tx_norm for k in noise_keys):
+                ignored_planned += 1
                 continue
 
             # Prefer explicit value; else compute from shares*price
@@ -2742,6 +2816,8 @@ def compute_insider_pro_signal(insider_df: Optional[pd.DataFrame]) -> Dict[str, 
         insights.append(f"✅ {buy_count} insider nákupů v posledních 6 měsících")
     if sell_count > 0:
         insights.append(f"⚠️ {sell_count} insider prodejů v posledních 6 měsících")
+    if ignored_planned > 0:
+        insights.append(f"ℹ️ {ignored_planned} plánovaných/automatických transakcí (10b5-1, tax withholding, opce) ignorováno pro výpočet signálu")
     if cluster_buying:
         insights.append("🔥 Cluster buying: více insiderů nakupuje ve stejném období.")
     if cluster_selling:
@@ -3356,25 +3432,28 @@ def estimate_smart_params(info: Dict[str, Any], metrics: Dict[str, "Metric"]) ->
     quality_score = 0
     
     # ROE > 15% → +2 body, > 10% → +1 bod
-    roe = safe_float(metrics.get("roe").value) if metrics.get("roe") else 0
-    if roe > 0.15:
-        quality_score += 2
-    elif roe > 0.10:
-        quality_score += 1
-    
+    roe = safe_float(metrics.get("roe").value) if metrics.get("roe") else None
+    if roe is not None:
+        if roe > 0.15:
+            quality_score += 2
+        elif roe > 0.10:
+            quality_score += 1
+
     # Net Margin > 20% → +2 body, > 10% → +1 bod
-    pm = safe_float(metrics.get("profit_margin").value) if metrics.get("profit_margin") else 0
-    if pm > 0.20:
-        quality_score += 2
-    elif pm > 0.10:
-        quality_score += 1
-    
+    pm = safe_float(metrics.get("profit_margin").value) if metrics.get("profit_margin") else None
+    if pm is not None:
+        if pm > 0.20:
+            quality_score += 2
+        elif pm > 0.10:
+            quality_score += 1
+
     # ROIC (aproximace pomocí ROA) > 15% → +2 body, > 10% → +1 bod
-    roa = safe_float(metrics.get("roa").value) if metrics.get("roa") else 0
-    if roa > 0.15:
-        quality_score += 2
-    elif roa > 0.10:
-        quality_score += 1
+    roa = safe_float(metrics.get("roa").value) if metrics.get("roa") else None
+    if roa is not None:
+        if roa > 0.15:
+            quality_score += 2
+        elif roa > 0.10:
+            quality_score += 1
     
     # Debt/Equity < 0.5 (po normalizaci) → +1 bod
     debt_eq = safe_float(metrics.get("debt_to_equity").value) if metrics.get("debt_to_equity") else None
@@ -3896,7 +3975,7 @@ def main():
         used_exit_multiple = float(dcf_exit_multiple)
         used_mode_label = "Manual"
 
-        if st.session_state.get("smart_dcf", True):
+        if st.session_state.get("smart_dcf", True) and (not _is_crypto_asset):
             smart = estimate_smart_params(info, metrics)
             used_dcf_growth = float(smart["growth"])
             used_dcf_wacc = float(smart["wacc"])
@@ -5241,6 +5320,12 @@ def main():
                     "dcf_fair": fair_value_dcf,
                     "mos": mos_dcf,
                     "verdict": verdict,
+                    "insider_label": (insider_signal.get("label") if isinstance(insider_signal, dict) else None),
+                    "insider_signal": (insider_signal.get("signal") if isinstance(insider_signal, dict) else None),
+                    "insider_buys": (insider_signal.get("recent_buys") if isinstance(insider_signal, dict) else None),
+                    "insider_sells": (insider_signal.get("recent_sells") if isinstance(insider_signal, dict) else None),
+                    "insider_cluster_buying": (insider_signal.get("cluster_buying") if isinstance(insider_signal, dict) else None),
+                    "insider_cluster_selling": (insider_signal.get("cluster_selling") if isinstance(insider_signal, dict) else None),
                 }
                 _existing = watch.get("items", {}).get(ticker, {})
                 _snapshots = _existing.get("snapshots", [])
@@ -5290,10 +5375,26 @@ def main():
                     status = "⏳ Wait"
                     diff_pct = None
 
+                # Insider signal from last saved snapshot (fast + stable). If missing, show "—".
+                ins_txt = "—"
+                try:
+                    _snaps = item.get("snapshots", []) if isinstance(item, dict) else []
+                    _ls = _snaps[-1] if _snaps else {}
+                    _lbl = _ls.get("insider_label")
+                    _sig = _ls.get("insider_signal")
+                    if _lbl:
+                        if _sig is not None and isinstance(_sig, (int, float)):
+                            ins_txt = f"{_lbl} ({_sig:.0f})"
+                        else:
+                            ins_txt = str(_lbl)
+                except Exception:
+                    pass
+
                 rows.append({
                     "Ticker": tkr,
                     "Aktuální cena": fmt_money(price_now),
                     "Cílová cena": fmt_money(tgt),
+                    "Insider (6m)": ins_txt,
                     "Status": status,
                     "Aktualizováno": item.get("updated_at", "")[:10]
                 })
