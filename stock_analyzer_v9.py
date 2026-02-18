@@ -18,6 +18,7 @@ warnings.filterwarnings('ignore', category=FutureWarning, module=r'google\.gener
 import requests
 import re
 import json
+import html
 import math
 import time
 import datetime as dt
@@ -51,6 +52,188 @@ st.markdown(
     unsafe_allow_html=True,
 )
 # (duplicate CSS removed)
+
+# =============================================================================
+# VYLEPŠENÍ v9.x (gating, diagnostika, robustnost UI) – bez zásahu do watchlistu
+# =============================================================================
+
+def normalize_ticker(raw: str) -> str:
+    """Normalizuje běžné aliasy a zápisy tickerů (bez web lookup)."""
+    t = (raw or "").strip().upper().replace(" ", "")
+    # Common dot-class tickers on Yahoo
+    t = t.replace(".A", "-A").replace(".B", "-B")
+    if t in ("BRK.B", "BRK B"):
+        t = "BRK-B"
+    if t in ("BRK.A", "BRK A"):
+        t = "BRK-A"
+    crypto_map = {"BTC": "BTC-USD", "ETH": "ETH-USD", "SOL": "SOL-USD", "BNB": "BNB-USD"}
+    if t in crypto_map:
+        return crypto_map[t]
+    m = re.fullmatch(r"([A-Z]{2,6})USD", t)
+    if m:
+        sym = m.group(1)
+        if sym in crypto_map:
+            return crypto_map[sym]
+        return f"{sym}-USD"
+    return t
+
+
+def detect_asset_flags(ticker: str, info: dict) -> dict:
+    """Určí typ aktiva a co má smysl zobrazovat. DCF/Earnings/Insiders/Peers = jen EQUITY."""
+    qt = (info.get("quoteType") or "").upper().strip()
+    t = (ticker or "").upper().strip()
+
+    asset_class = "EQUITY"
+    if t.startswith("^") or qt in ("INDEX", "INDEXQUOTE"):
+        asset_class = "INDEX"
+    elif qt in ("CRYPTOCURRENCY", "CRYPTO") or (t.endswith("-USD") and info.get("circulatingSupply") and not info.get("sector")):
+        asset_class = "CRYPTO"
+    elif qt == "ETF":
+        asset_class = "ETF"
+    elif qt in ("MUTUALFUND", "MUTUAL FUND", "FUND"):
+        asset_class = "FUND"
+    elif qt in ("CURRENCY", "FX"):
+        asset_class = "FX"
+
+    eq_only = (asset_class == "EQUITY")
+    return {
+        "quoteType": qt or "—",
+        "asset_class": asset_class,
+        "supports_dcf": eq_only,
+        "supports_earnings": eq_only,
+        "supports_insiders": eq_only,
+        "supports_peers": eq_only,
+        "supports_fundamentals": eq_only,
+    }
+
+
+def _diag_init():
+    if "_diagnostics" not in st.session_state:
+        st.session_state["_diagnostics"] = []
+    if "_diag_sources" not in st.session_state:
+        st.session_state["_diag_sources"] = {}
+
+
+def diag_log(msg: str, level: str = "INFO"):
+    _diag_init()
+    try:
+        ts = dt.datetime.now().strftime("%H:%M:%S")
+    except Exception:
+        ts = "—"
+    st.session_state["_diagnostics"].append({"t": ts, "level": level, "msg": str(msg)})
+    st.session_state["_diagnostics"] = st.session_state["_diagnostics"][-200:]
+
+
+def diag_set_source(key: str, value):
+    _diag_init()
+    st.session_state["_diag_sources"][key] = value
+
+
+def render_diagnostics_panel():
+    if not st.session_state.get("debug_mode", False):
+        return
+    _diag_init()
+    with st.expander("🧪 Diagnostika & Zdroje", expanded=False):
+        st.markdown("**Zdroje (provenance):**")
+        st.json(st.session_state.get("_diag_sources", {}))
+        st.markdown("---")
+        st.markdown("**Události:**")
+        events = list(reversed(st.session_state.get("_diagnostics", [])))
+        if not events:
+            st.caption("(žádné události)")
+        else:
+            for e in events[:80]:
+                st.write(f"[{e.get('t','—')}] {e.get('level','INFO')}: {e.get('msg','')}")
+        if st.button("🧹 Vyčistit diagnostiku", use_container_width=True):
+            st.session_state["_diagnostics"] = []
+            st.session_state["_diag_sources"] = {}
+            st.rerun()
+
+
+def na_box(title: str, reason: str, help_text: str = ""):
+    st.info(f"**{title}:** N/A – {reason} {qmark(help_text) if help_text else ''}", icon="ℹ️")
+
+
+def reverse_exit_multiple_implied_growth(price, fcf0, wacc, years, shares, cash, debt, exit_multiple):
+    """Reverse DCF implied růst (Exit Multiple metoda) – binary search."""
+    try:
+        if not (price and fcf0 and wacc and years and shares and exit_multiple):
+            return None
+        if fcf0 <= 0 or price <= 0 or shares <= 0:
+            return None
+        target_equity = price * shares
+        target_ev = target_equity - cash + debt
+
+        def ev_for_g(g):
+            cf = float(fcf0)
+            pv_sum = 0.0
+            for y in range(1, int(years) + 1):
+                cf *= (1 + g)
+                pv_sum += cf / ((1 + wacc) ** y)
+            tv = cf * float(exit_multiple)
+            pv_tv = tv / ((1 + wacc) ** int(years))
+            return pv_sum + pv_tv
+
+        lo, hi = -0.5, 1.0
+        ev_lo, ev_hi = ev_for_g(lo), ev_for_g(hi)
+        if not (min(ev_lo, ev_hi) <= target_ev <= max(ev_lo, ev_hi)):
+            hi2 = 2.0
+            ev_hi2 = ev_for_g(hi2)
+            if min(ev_lo, ev_hi2) <= target_ev <= max(ev_lo, ev_hi2):
+                hi, ev_hi = hi2, ev_hi2
+            else:
+                return None
+        for _ in range(60):
+            mid = (lo + hi) / 2.0
+            if ev_for_g(mid) < target_ev:
+                lo = mid
+            else:
+                hi = mid
+        return (lo + hi) / 2.0
+    except Exception:
+        return None
+
+
+def build_data_quality(ticker, info, asset_flags, fcf_raw, fcf_used, used_ocf_proxy, shares_estimated, cash_missing, debt_missing, one_off_flag):
+    price_cur = info.get("currency")
+    fin_cur = info.get("financialCurrency")
+    mismatch = bool(price_cur and fin_cur and price_cur != fin_cur)
+    return {
+        "asset_class": asset_flags.get("asset_class"),
+        "quoteType": asset_flags.get("quoteType"),
+        "price_currency": price_cur,
+        "financial_currency": fin_cur,
+        "currency_mismatch": mismatch,
+        "fcf_raw": fcf_raw,
+        "fcf_used": fcf_used,
+        "used_ocf_proxy": used_ocf_proxy,
+        "shares_estimated": shares_estimated,
+        "cash_missing": cash_missing,
+        "debt_missing": debt_missing,
+        "one_off_cashflow_flag": one_off_flag,
+    }
+
+
+def compute_dcf_confidence(dq):
+    score = 100
+    reasons = []
+    if dq.get("currency_mismatch"):
+        score -= 10
+        reasons.append("Měna ceny ≠ měna výkazů (může zkreslit DCF).")
+    if dq.get("shares_estimated"):
+        score -= 15
+        reasons.append("Počet akcií je odhad (marketCap/price).")
+    if dq.get("used_ocf_proxy"):
+        score -= 20
+        reasons.append("Použit OCF proxy místo skutečného FCF.")
+    if dq.get("cash_missing") or dq.get("debt_missing"):
+        score -= 10
+        reasons.append("Chybí cash/debt údaje (equity bridge méně přesný).")
+    if dq.get("one_off_cashflow_flag"):
+        score -= 10
+        reasons.append("Detekován možný one-off / outlier v cashflow.")
+    score = max(0, min(100, int(score)))
+    return score, reasons
 
 
 def js_close_sidebar():
@@ -259,6 +442,24 @@ METRIC_TOOLTIPS: Dict[str, str] = {
 def metric_help(key: str) -> Optional[str]:
     """Vrátí tooltip text pro danou metriku nebo None."""
     return METRIC_TOOLTIPS.get(key)
+
+
+def qmark(help_text: str) -> str:
+    """Small inline question-mark tooltip for section headers (HTML title attribute)."""
+    try:
+        safe = html.escape(str(help_text or ""))
+    except Exception:
+        safe = str(help_text or "")
+    return f"<span style='font-size:0.9rem; opacity:0.65; cursor:help;' title='{safe}'>❔</span>"
+
+def section_title(title: str, help_text: str = "", level: int = 3) -> None:
+    """Render a section title with a hover tooltip question mark."""
+    tag = f"h{max(1, min(6, int(level)))}"
+    st.markdown(
+        f"<{tag} style='margin-top:0.8rem; margin-bottom:0.35rem;'>{title} {qmark(help_text) if help_text else ''}</{tag}>",
+        unsafe_allow_html=True,
+    )
+
 
 
 # ============================================================================
@@ -546,6 +747,9 @@ def calculate_altman_zscore(
         if market_cap is None or market_cap == 0:
             price = safe_float(info.get("regularMarketPrice") or info.get("currentPrice"))
             shares = safe_float(info.get("sharesOutstanding"))
+        shares_estimated = False
+        if shares:
+            diag_set_source("shares", {"value": shares, "source": "info.sharesOutstanding"})
             if price and shares:
                 market_cap = price * shares
         market_cap = market_cap or 0
@@ -690,6 +894,58 @@ def calculate_technical_signals(price_history: pd.DataFrame) -> Dict[str, Any]:
     return result
 
 
+
+
+def calculate_dcf_fair_value(
+    fcf: float,
+    growth_rate: float,
+    terminal_growth: float,
+    wacc: float,
+    years: int,
+    shares_outstanding: float,
+    total_cash: float = 0.0,
+    total_debt: float = 0.0,
+    exit_multiple: Optional[float] = None,
+) -> Optional[float]:
+    """Spočítá férovou cenu akcie (DCF) na základě FCF.
+
+    Podporované terminální metody:
+    - Exit Multiple (doporučeno): TV = FCF_YearN * exit_multiple
+    - Gordon Growth (fallback):   TV = FCF_YearN * (1+g_term) / (WACC - g_term)
+
+    Vrací fair value *na akcii* (Equity Value / shares).
+    Pozn.: terminal_growth se použije jen když exit_multiple není zadán.
+    """
+    try:
+        if fcf is None or shares_outstanding is None or shares_outstanding <= 0:
+            return None
+        if wacc is None or float(wacc) <= 0:
+            return None
+
+        cf = float(fcf)
+        pv_sum = 0.0
+        yrs = int(years)
+
+        for year in range(1, yrs + 1):
+            cf *= (1.0 + float(growth_rate))
+            pv_sum += cf / ((1.0 + float(wacc)) ** year)
+
+        if exit_multiple is not None:
+            tv = cf * float(exit_multiple)
+        else:
+            if float(wacc) <= float(terminal_growth):
+                return None
+            tv = cf * (1.0 + float(terminal_growth)) / (float(wacc) - float(terminal_growth))
+
+        pv_tv = tv / ((1.0 + float(wacc)) ** yrs)
+        enterprise_value = pv_sum + pv_tv
+
+        equity_value = enterprise_value + float(total_cash or 0.0) - float(total_debt or 0.0)
+        return equity_value / float(shares_outstanding)
+    except Exception:
+        return None
+
+
 def monte_carlo_dcf(
     fcf: float,
     growth_rate: float,
@@ -697,41 +953,66 @@ def monte_carlo_dcf(
     wacc: float,
     years: int,
     shares_outstanding: float,
-    total_cash: float = 0.0, # <--- Nový argument
-    total_debt: float = 0.0, # <--- Nový argument
+    total_cash: float = 0.0,
+    total_debt: float = 0.0,
+    exit_multiple: Optional[float] = None,
     n_simulations: int = 1000
 ) -> Dict[str, Any]:
-    """
-    Monte Carlo simulace DCF - vrací distribuci fair values.
+    """Monte Carlo simulace DCF - vrací distribuci fair values.
+
+    - Pokud je `exit_multiple` zadán, simulace používá Exit Multiple metodu (konzistentní s hlavním DCF).
+      Náhodně rozptyluje: growth, WACC a exit multiple.
+    - Pokud `exit_multiple` není zadán, použije se Gordon Growth terminál (terminal_growth) a rozptyluje se i terminal growth.
+
+    Vrací agregace (mean/median/p10/p90/...) nad validními scénáři.
     """
     try:
-        results = []
+        results: List[float] = []
         rng = np.random.default_rng(42)
 
-        for _ in range(n_simulations):
-            # Náhodné odchylky (normální distribuce)
-            sim_growth = rng.normal(growth_rate, growth_rate * 0.3)
-            sim_wacc = rng.normal(wacc, wacc * 0.15)
-            sim_terminal = rng.normal(terminal_growth, 0.005)
-            
-            # Clamp values to sane ranges
+        base_g = float(growth_rate)
+        base_w = float(wacc)
+        base_exit = float(exit_multiple) if exit_multiple is not None else None
+        base_term = float(terminal_growth)
+
+        # Nastavíme minimální volatilitu, aby simulace fungovala i když je růst ~0
+        g_sigma = max(abs(base_g) * 0.30, 0.01)
+        w_sigma = max(abs(base_w) * 0.15, 0.005)
+
+        for _ in range(int(n_simulations)):
+            sim_growth = float(rng.normal(base_g, g_sigma))
+            sim_wacc = float(rng.normal(base_w, w_sigma))
+
+            # Clamp na rozumné hranice
             sim_wacc = max(0.05, min(0.25, sim_wacc))
-            sim_terminal = max(0.0, min(0.05, sim_terminal))
 
-            if sim_wacc <= sim_terminal:
-                continue
+            if base_exit is not None:
+                exit_sigma = max(abs(base_exit) * 0.20, 1.0)
+                sim_exit = float(rng.normal(base_exit, exit_sigma))
+                sim_exit = max(5.0, min(80.0, sim_exit))
 
-            fv = calculate_dcf_fair_value(
-                fcf, sim_growth, sim_terminal, sim_wacc, years, shares_outstanding,
-                total_cash, total_debt # Předáváme dál
-            )
+                fv = calculate_dcf_fair_value(
+                    fcf, sim_growth, base_term, sim_wacc, years, shares_outstanding,
+                    total_cash, total_debt, exit_multiple=sim_exit
+                )
+            else:
+                sim_terminal = float(rng.normal(base_term, 0.005))
+                sim_terminal = max(0.0, min(0.05, sim_terminal))
+                if sim_wacc <= sim_terminal:
+                    continue
+
+                fv = calculate_dcf_fair_value(
+                    fcf, sim_growth, sim_terminal, sim_wacc, years, shares_outstanding,
+                    total_cash, total_debt, exit_multiple=None
+                )
+
             if fv and fv > 0:
-                results.append(fv)
+                results.append(float(fv))
 
         if not results:
             return {}
 
-        arr = np.array(results)
+        arr = np.array(results, dtype=float)
         return {
             "mean": float(np.mean(arr)),
             "median": float(np.median(arr)),
@@ -740,7 +1021,7 @@ def monte_carlo_dcf(
             "p75": float(np.percentile(arr, 75)),
             "p90": float(np.percentile(arr, 90)),
             "std": float(np.std(arr)),
-            "n": len(results),
+            "n": int(arr.shape[0]),
         }
     except Exception:
         return {}
@@ -934,13 +1215,15 @@ def fetch_ticker_info(ticker: str) -> Dict[str, Any]:
 
 
 @st.cache_data(show_spinner=False, ttl=3600)
-def fetch_price_history(ticker: str, period: str = "1y") -> pd.DataFrame:
-    """Fetch historical price data."""
+@st.cache_data(show_spinner=False, ttl=1800)
+def fetch_price_history(ticker: str, period: str = "1y", auto_adjust: bool = False) -> pd.DataFrame:
+    """Fetch historical price data (cache). auto_adjust=True -> upravené ceny (splity/dividendy)."""
     try:
         t = yf.Ticker(ticker)
-        df = t.history(period=period, auto_adjust=False)
-        return df if not df.empty else pd.DataFrame()
-    except Exception:
+        df = t.history(period=period, auto_adjust=bool(auto_adjust))
+        return df if isinstance(df, pd.DataFrame) and (not df.empty) else pd.DataFrame()
+    except Exception as e:
+        diag_log(f"fetch_price_history error: {e}", "WARN")
         return pd.DataFrame()
 
 
@@ -2567,6 +2850,7 @@ def build_scorecard_advanced(metrics: Dict[str, Metric], info: Dict[str, Any]) -
 
 
 
+
 def reverse_dcf_implied_growth(
     current_price: float,
     fcf: float,
@@ -2574,36 +2858,42 @@ def reverse_dcf_implied_growth(
     wacc: float = 0.10,
     years: int = 5,
     shares_outstanding: Optional[float] = None,
-    total_cash: float = 0.0, # <--- Nový argument
-    total_debt: float = 0.0  # <--- Nový argument
+    total_cash: float = 0.0,
+    total_debt: float = 0.0,
+    exit_multiple: Optional[float] = None,
 ) -> Optional[float]:
-    """Calculate implied growth rate from current price."""
-    if fcf <= 0 or shares_outstanding is None or shares_outstanding <= 0:
+    """Reverse DCF: jaký růst FCF implikuje aktuální cena.
+
+    Pokud je `exit_multiple` zadán, použije se stejná Exit Multiple metoda jako v hlavním DCF modelu
+    (konzistentní interpretace). Pokud není, použije se Gordon Growth s `terminal_growth`.
+    """
+    if fcf is None or float(fcf) <= 0 or shares_outstanding is None or shares_outstanding <= 0:
         return None
-    
+
     try:
         def dcf_at_growth(g: float) -> float:
             fv = calculate_dcf_fair_value(
                 fcf, g, terminal_growth, wacc, years, shares_outstanding,
-                total_cash, total_debt # Předáváme dál
+                total_cash, total_debt, exit_multiple=exit_multiple
             )
-            return fv if fv else 0.0
-        
+            return float(fv) if fv else 0.0
+
         low, high = -0.5, 1.0
-        for _ in range(50):
+        for _ in range(60):
             mid = (low + high) / 2.0
             fv = dcf_at_growth(mid)
+
             if abs(fv - current_price) < 0.01:
                 return mid
+
             if fv < current_price:
                 low = mid
             else:
                 high = mid
-        
+
         return (low + high) / 2.0
     except Exception:
         return None
-
 
 # ============================================================================
 # INSIDER TRADING ANALYSIS
@@ -3067,9 +3357,19 @@ VÝSTUP POUZE JSON:
 
 def get_earnings_calendar_estimate(ticker: str, info: Dict[str, Any]) -> Optional[dt.date]:
     """
-    Estimate next earnings date based on historical pattern.
-    Most companies report quarterly, roughly same time each quarter.
+    Estimate next earnings date.
+
+    NOTE:
+    - For assets that do not report earnings (crypto, indices, ETFs, mutual funds), returns None.
+    - For normal equities: tries Yahoo calendar first; if unavailable, falls back to a simple quarter-date heuristic.
     """
+    try:
+        qt = (info.get("quoteType") or "").upper()
+        if qt in ("CRYPTOCURRENCY", "CRYPTO", "INDEX", "ETF", "MUTUALFUND"):
+            return None
+    except Exception:
+        pass
+
     try:
         t = yf.Ticker(ticker)
         calendar = getattr(t, "calendar", None)
@@ -3081,10 +3381,9 @@ def get_earnings_calendar_estimate(ticker: str, info: Dict[str, Any]) -> Optiona
                     return pd.to_datetime(next_earnings).date()
     except Exception:
         pass
-    
-    # Fallback: Estimate based on common patterns (most tech companies: late Jan, late Apr, late Jul, late Oct)
+
+    # Fallback: Estimate based on common patterns (most companies: late Jan, late Apr, late Jul, late Oct)
     today = dt.date.today()
-    # Simple heuristic: next month-end
     if today.month < 4:
         return dt.date(today.year, 4, 25)
     elif today.month < 7:
@@ -3819,6 +4118,22 @@ def main():
 
         
             st.rerun()
+        # Debug & Data settings
+        debug_mode = st.checkbox("🧪 Debug mode", value=st.session_state.get("debug_mode", False),
+                                 help="Zobrazí panel Diagnostika & Zdroje (fallbacky, gating, provenance).", key="debug_mode")
+        auto_adjust_prices = st.checkbox("📉 Auto-adjust ceny (splity/dividendy)", value=st.session_state.get("auto_adjust_prices", False),
+                                         help="Použije adjustované historické ceny. Vhodné pro dlouhé grafy a simulace.", key="auto_adjust_prices")
+        if st.button("♻️ Refresh cache", use_container_width=True, help="Vyčistí cache (data se znovu stáhnou)."):
+            try:
+                st.cache_data.clear()
+                st.cache_resource.clear()
+            except Exception:
+                pass
+            diag_log("Cache cleared by user", "INFO")
+            st.rerun()
+
+        render_diagnostics_panel()
+        st.markdown("---")
         st.markdown("---")
         
         # DCF Settings
@@ -3916,7 +4231,10 @@ def main():
             st.rerun()
 
     # Process ticker
-    ticker = ticker_input if analyze_btn else st.session_state.get("last_ticker", "AAPL")
+    _raw_sel = ticker_input if analyze_btn else st.session_state.get("last_ticker", "AAPL")
+    ticker = normalize_ticker(_raw_sel)
+    if ticker != (_raw_sel or ""):
+        diag_log(f"Ticker normalizován: {_raw_sel} → {ticker}", "INFO")
     st.session_state["last_ticker"] = ticker
     
     # Fetch data
@@ -3930,6 +4248,13 @@ def main():
         # === CRYPTO DETEKCE (BTC-USD, ETH-USD, ...) ===
         _quote_type = (info.get("quoteType") or "").upper()
         _is_crypto_asset = _quote_type in ("CRYPTOCURRENCY", "CRYPTO")
+        # Asset gating (DCF/Earnings/Insiders/Peers jen pro EQUITY)
+        asset_flags = detect_asset_flags(ticker, info)
+        supports_dcf = bool(asset_flags.get("supports_dcf"))
+        supports_earnings = bool(asset_flags.get("supports_earnings"))
+        supports_insiders = bool(asset_flags.get("supports_insiders"))
+        supports_peers = bool(asset_flags.get("supports_peers"))
+        diag_set_source("asset", asset_flags)
         
         # Pro crypto: price může být v regularMarketPrice (ne currentPrice)
         if _is_crypto_asset and not info.get("currentPrice"):
@@ -3968,6 +4293,21 @@ def main():
         # FCF debug suppressed in UI
         shares = safe_float(info.get("sharesOutstanding"))
         current_price = metrics.get("price").value if metrics.get("price") else None
+        diag_set_source("price", {"value": current_price, "source": "metrics.price" if metrics.get("price") else "none"})
+
+        # Cash/Debt bridge (používá se v DCF, Reverse DCF i Monte Carlo)
+        total_cash = safe_float(info.get("totalCash")) or 0
+        total_debt = safe_float(info.get("totalDebt")) or 0
+        # Fallback: sharesOutstanding někdy chybí (ADR/ETF...). Odhadneme z market cap / ceny.
+        if (not shares or shares <= 0) and current_price and market_cap_for_fcf:
+            try:
+                shares = float(market_cap_for_fcf) / float(current_price)
+                shares_estimated = True
+                diag_log("sharesOutstanding missing -> shares estimated as marketCap/currentPrice", "WARN")
+                diag_set_source("shares", {"value": shares, "source": "derived:marketCap/currentPrice", "marketCap": market_cap_for_fcf, "price": current_price})
+            except Exception as e:
+                diag_log(f"shares estimation failed: {e}", "WARN")
+
 
         # Decide DCF inputs (Smart vs Manual)
         used_dcf_growth = float(dcf_growth)
@@ -3975,7 +4315,7 @@ def main():
         used_exit_multiple = float(dcf_exit_multiple)
         used_mode_label = "Manual"
 
-        if st.session_state.get("smart_dcf", True) and (not _is_crypto_asset):
+        if st.session_state.get("smart_dcf", True) and supports_dcf and (not _is_crypto_asset):
             smart = estimate_smart_params(info, metrics)
             used_dcf_growth = float(smart["growth"])
             used_dcf_wacc = float(smart["wacc"])
@@ -3986,16 +4326,41 @@ def main():
         # --- Amazon-style reinvestment heavy adjustment (Adjusted FCF) ---
         # If FCF is unusually low relative to Operating Cash Flow, treat it as heavy reinvestment and
         # use an adjusted cash-flow proxy for DCF (maintenance earnings proxy).
-        dcf_fcf_used = fcf
+        dcf_fcf_used = fcf if supports_dcf else None
+        if not supports_dcf:
+            diag_log(f"DCF gated: asset_class={asset_flags.get('asset_class')} quoteType={asset_flags.get('quoteType')}", "INFO")
         try:
             operating_cashflow = safe_float(info.get("operatingCashflow"))
         except Exception:
             operating_cashflow = None
 
-        if operating_cashflow and dcf_fcf_used and dcf_fcf_used > 0 and operating_cashflow > 0:
-            if dcf_fcf_used < (0.3 * operating_cashflow):
+        # DCF needs a positive cash-flow base. Some tickers have missing/negative FCF, and some
+        # (Amazon-style) show very low FCF due to heavy reinvestment. In both cases we use a
+        # conservative "maintenance earnings" proxy derived from Operating Cash Flow (OCF).
+        if operating_cashflow and operating_cashflow > 0:
+            # If FCF is missing/non-positive, use OCF proxy directly.
+            if not dcf_fcf_used or dcf_fcf_used <= 0:
                 dcf_fcf_used = operating_cashflow * 0.6
-                st.warning("⚠️ Detekováno vysoké reinvestování (Amazon style). Použito upravené OCF místo FCF.")
+                diag_log("FCF missing/non-positive -> using 60% OCF proxy for DCF", "WARN")
+                diag_set_source("dcf_fcf_base", {"mode":"OCF_PROXY_60PCT","reason":"FCF missing/non-positive","operatingCashflow": operating_cashflow})
+            # If FCF looks unrealistically low vs OCF, treat it as heavy reinvestment and use the proxy.
+            elif dcf_fcf_used < (0.3 * operating_cashflow):
+                dcf_fcf_used = operating_cashflow * 0.6
+                diag_log("FCF very low vs OCF -> using 60% OCF proxy for DCF", "WARN")
+                diag_set_source("dcf_fcf_base", {"mode":"OCF_PROXY_60PCT","reason":"FCF < 30% OCF (reinvestment heavy)","operatingCashflow": operating_cashflow})
+
+        
+        # Provenance: cashflow base for DCF
+        # Provenance: cashflow base for DCF
+        if "dcf_fcf_base" not in st.session_state.get("_diag_sources", {}):
+            diag_set_source("dcf_fcf_base", {"mode":"FCF_TTM_RAW","fcf_raw": fcf})
+
+        # Cash/Debt bridge (používá se i pro reverse/MC; definujeme vždy)
+        total_cash = safe_float(info.get("totalCash")) or 0
+        total_debt = safe_float(info.get("totalDebt")) or 0
+        cash_missing = (info.get("totalCash") is None)
+        debt_missing = (info.get("totalDebt") is None)
+        diag_set_source("cash_debt", {"totalCash": total_cash, "totalDebt": total_debt, "cash_missing": cash_missing, "debt_missing": debt_missing})
         fair_value_dcf = None
         mos_dcf = None
         implied_growth = None
@@ -4025,8 +4390,7 @@ def main():
             enterprise_value = pv_cash_flows + pv_terminal_value
             
             # 4. Equity Value (EV + Cash - Debt)
-            total_cash = safe_float(info.get("totalCash")) or 0
-            total_debt = safe_float(info.get("totalDebt")) or 0
+            # total_cash/total_debt defined above
             equity_value = enterprise_value + total_cash - total_debt
             
             fair_value_dcf = equity_value / shares
@@ -4034,11 +4398,36 @@ def main():
             # Přepočet MOS a Implied Growth
             if current_price:
                 mos_dcf = (fair_value_dcf / current_price) - 1.0
-                implied_growth = reverse_dcf_implied_growth(
-                    current_price, fcf, dcf_terminal, used_dcf_wacc, dcf_years, shares,
-                    total_cash, total_debt
+                implied_growth = reverse_exit_multiple_implied_growth(
+                    price=current_price,
+                    fcf0=float(dcf_fcf_used),
+                    wacc=float(used_dcf_wacc),
+                    years=int(dcf_years),
+                    shares=float(shares),
+                    cash=float(total_cash),
+                    debt=float(total_debt),
+                    exit_multiple=float(used_exit_multiple),
                 )
         
+        # Data Quality & Confidence (pro DCF UI + diagnostiku)
+        one_off_flag = False  # best-effort; plná heuristika by vyžadovala další zdroje
+        dq = build_data_quality(
+            ticker=ticker,
+            info=info,
+            asset_flags=asset_flags,
+            fcf_raw=fcf,
+            fcf_used=dcf_fcf_used,
+            used_ocf_proxy=bool(operating_cashflow and dcf_fcf_used and fcf and fcf > 0 and (dcf_fcf_used != fcf)),
+            shares_estimated=bool(locals().get("shares_estimated", False)),
+            cash_missing=bool(cash_missing),
+            debt_missing=bool(debt_missing),
+            one_off_flag=bool(one_off_flag),
+        )
+        dcf_conf, dcf_conf_reasons = compute_dcf_confidence(dq)
+        st.session_state["dcf_confidence"] = dcf_conf
+        st.session_state["dcf_confidence_reasons"] = dcf_conf_reasons
+        diag_set_source("data_quality", dq)
+        diag_set_source("dcf_confidence", {"score": dcf_conf, "reasons": dcf_conf_reasons})
         # Analyst fair value
         analyst_target = metrics.get("target_mean").value if metrics.get("target_mean") else None
         mos_analyst = None
@@ -4069,7 +4458,8 @@ def main():
 
         # === NOVÉ ANALYTICKÉ VÝPOČTY v6.0 ===
         # Technické indikátory
-        price_history_1y = fetch_price_history(ticker, "1y")
+        price_history_1y = fetch_price_history(ticker, "1y", auto_adjust=st.session_state.get("auto_adjust_prices", False))
+        diag_set_source("price_history", {"period":"1y","auto_adjust": bool(st.session_state.get("auto_adjust_prices", False))})
         tech_signals = calculate_technical_signals(price_history_1y)
 
         # Piotroski F-Score
@@ -4089,17 +4479,21 @@ def main():
 
         # Monte Carlo DCF
         mc_dcf = {}
-        if fcf and shares and fcf > 0 and shares > 0:
-            mc_dcf = monte_carlo_dcf(fcf, used_dcf_growth, dcf_terminal, used_dcf_wacc, dcf_years, shares)
+        if dcf_fcf_used and shares and dcf_fcf_used > 0 and shares > 0:
+            mc_dcf = monte_carlo_dcf(dcf_fcf_used, used_dcf_growth, dcf_terminal, used_dcf_wacc, dcf_years, shares, total_cash, total_debt, exit_multiple=used_exit_multiple)
 
         # Value Trap detection (nyní funguje správně)
         is_value_trap, value_trap_msg = detect_value_trap(info, metrics)
 
-        # Earnings countdown
-        next_earnings = get_earnings_calendar_estimate(ticker, info)
+        # Earnings countdown (jen pro EQUITY)
+        next_earnings = None
         earnings_countdown = None
-        if next_earnings:
-            earnings_countdown = (next_earnings - dt.date.today()).days
+        if supports_earnings:
+            next_earnings = get_earnings_calendar_estimate(ticker, info)
+            if next_earnings:
+                earnings_countdown = (next_earnings - dt.date.today()).days
+        else:
+            diag_log(f"Earnings gated: asset_class={asset_flags.get('asset_class')}", "INFO")
 
         # === NOVÉ v9.0 ===
         # Crypto detekce
@@ -4891,10 +5285,66 @@ def main():
     # ------------------------------------------------------------------------
     with tabs[5]:
         st.markdown('<div class="section-header">💰 DCF Valuace & Reverse DCF</div>', unsafe_allow_html=True)
+        # Gating: DCF jen pro EQUITY (ETF/CRYPTO/INDEX/FUND/FX -> N/A)
+        if not supports_dcf:
+            na_box("DCF valuace", f"tento ticker je {asset_flags.get('asset_class')} ({asset_flags.get('quoteType')})",
+                   "DCF se dává smysl jen u akcií (EQUITY). Pro ETF/Index/Krypto použij technickou analýzu a price history.")
+        else:
+            # Confidence & Data Quality
+            _conf = st.session_state.get("dcf_confidence")
+            _reasons = st.session_state.get("dcf_confidence_reasons", [])
+            if _conf is not None:
+                st.markdown(f"**DCF Confidence:** {_conf}/100 {qmark('Skóre kvality vstupních dat. Penalizace: odhad shares, OCF proxy, cash/debt missing, currency mismatch, outlier flagy.')}", unsafe_allow_html=True)
+                with st.expander("📌 Data Quality & Confidence – detaily", expanded=False):
+                    st.json(st.session_state.get("_diag_sources", {}).get("data_quality", {}))
+                    if _reasons:
+                        st.markdown("**Důvody penalizace:**")
+                        for r in _reasons:
+                            st.write(f"- {r}")
+            st.markdown("---")
+
+            # Scenario Builder (Bull / Base / Bear)
+            section_title("🎛️ Scenario Builder (Bull / Base / Bear)", "Rychlé porovnání tří scénářů bez ručního ladění sliderů. Používá stejný cash/debt bridge a Exit Multiple jako hlavní DCF.", level=3)
+            if dcf_fcf_used and shares and dcf_fcf_used > 0 and shares > 0 and current_price:
+                base = {"growth": float(used_dcf_growth), "wacc": float(used_dcf_wacc), "exit": float(used_exit_multiple)}
+                bull = {"growth": min(0.50, base["growth"] * 1.25), "wacc": max(0.05, base["wacc"] * 0.9), "exit": min(60.0, base["exit"] * 1.15)}
+                bear = {"growth": max(-0.10, base["growth"] * 0.75), "wacc": min(0.25, base["wacc"] * 1.1), "exit": max(5.0, base["exit"] * 0.85)}
+
+                def _fv(g, w, ex):
+                    pv_sum = 0.0
+                    cf = float(dcf_fcf_used)
+                    for year in range(1, int(dcf_years) + 1):
+                        cf *= (1 + g)
+                        pv_sum += cf / ((1 + w) ** year)
+                    tv = cf * ex
+                    pv_tv = tv / ((1 + w) ** int(dcf_years))
+                    ev = pv_sum + pv_tv
+                    return (ev + total_cash - total_debt) / float(shares)
+
+                rows = []
+                for name, s in [("Bear", bear), ("Base", base), ("Bull", bull)]:
+                    fv = _fv(s["growth"], s["wacc"], s["exit"])
+                    mos = (fv / current_price) - 1.0 if fv and current_price else None
+                    ig = reverse_exit_multiple_implied_growth(current_price, float(dcf_fcf_used), float(s["wacc"]), int(dcf_years), float(shares), float(total_cash), float(total_debt), float(s["exit"]))
+                    rows.append({
+                        "Scénář": name,
+                        "Growth": f"{s['growth']*100:.1f}%",
+                        "WACC": f"{s['wacc']*100:.1f}%",
+                        "Exit": f"{s['exit']:.1f}×",
+                        "Fair Value": fmt_money(fv),
+                        "MOS": f"{mos*100:+.1f}%" if mos is not None else "—",
+                        "Implied Growth": f"{ig*100:.1f}%" if ig is not None else "—",
+                    })
+                st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+            else:
+                na_box("Scenario Builder", "chybí kladný FCF/OCF proxy, počet akcií nebo aktuální cena",
+                       "Pro scénáře potřebujeme FCF/OCF proxy > 0, shares > 0 a cenu.")
+            st.markdown("---")
+
+
+        st.markdown(f"**Použité parametry pro DCF:** Růst {used_dcf_growth*100:.1f}% ({used_mode_label}) | WACC {used_dcf_wacc*100:.1f}% ({used_mode_label}) | Exit multiple {used_exit_multiple:.1f}× ({used_mode_label}) {qmark('Smart = automatický odhad z metrik; Manual = hodnoty z panelu „DCF Parametry“ v levém menu. Exit multiple je terminální metoda používaná v hlavním DCF. DCF používá FCF TTM; když FCF chybí nebo je nelogické, použije se konzervativní proxy 60 % Operating Cash Flow (OCF).')}", unsafe_allow_html=True)
         
-        st.info(f"Použitý Růst: {used_dcf_growth*100:.1f} % ({used_mode_label}) | Použitý WACC: {used_dcf_wacc*100:.1f} % ({used_mode_label}) | Exit Multiple: {used_exit_multiple:.1f}× ({used_mode_label})")
-        
-        if fcf and shares and fcf > 0:
+        if dcf_fcf_used and shares and dcf_fcf_used > 0:
             # Main DCF results
             dcf_col1, dcf_col2, dcf_col3, dcf_col4 = st.columns(4)
             
@@ -4915,7 +5365,7 @@ def main():
             st.markdown("---")
             
             # Sensitivity analysis
-            st.markdown("### 📊 Sensitivity Analysis")
+            section_title("📊 Sensitivity Analysis", "Jak moc se férová cena změní, když upravíš 1 parametr (růst nebo WACC) a ostatní necháš stejné. Počítá se se stejným cash/debt bridge a Exit Multiple jako hlavní DCF.", level=3)
             st.caption("Výpočet zahrnuje stejnou úpravu o cash/dluh jako hlavní DCF model.")
             
             sens_col1, sens_col2 = st.columns(2)
@@ -4967,22 +5417,73 @@ def main():
                 st.dataframe(pd.DataFrame(wacc_data), use_container_width=True, hide_index=True)
             
             # Interpretation
-            st.markdown("---")
-            st.markdown("### 🧠 Interpretace")
             
-            if implied_growth is not None:
-                if implied_growth < 0:
-                    st.warning(f"📉 **Trh implikuje pokles FCF ({implied_growth*100:.1f}%)** - možná příležitost nebo reálné problémy")
-                elif implied_growth < 0.05:
-                    st.info(f"📊 Trh očekává nízký růst ({implied_growth*100:.1f}%) - konzervativní valuace")
-                elif implied_growth < 0.15:
-                    st.success(f"✅ Trh očekává zdravý růst ({implied_growth*100:.1f}%) - v souladu s tvým modelem")
+
+            st.markdown("---")
+            section_title(
+                "🧠 Interpretace",
+                "Shrnutí toho, co DCF říká vs. aktuální cena. Vychází z MOS a z Reverse DCF (Implied Growth). Pozor: DCF je citlivé na vstupy – ber to jako interval, ne jako přesné číslo.",
+                level=3,
+            )
+
+            # 1) MOS (fair value vs cena)
+            if fair_value_dcf is None or current_price is None or mos_dcf is None:
+                st.markdown(
+                    f"• Interpretace je omezená – chybí DCF férovka / aktuální cena / MOS. {qmark('MOS = (férovka / cena) - 1. Kladné číslo znamená, že je akcie pod férovkou (polštář).')}",
+                    unsafe_allow_html=True,
+                )
+            else:
+                if mos_dcf > 0.25:
+                    st.success(f"✅ **Podhodnocené podle DCF:** MOS {mos_dcf*100:+.1f}% (velký polštář).")
+                elif mos_dcf > 0.05:
+                    st.info(f"🟢 **Lehce pod férovkou:** MOS {mos_dcf*100:+.1f}% (menší polštář).")
+                elif mos_dcf >= -0.05:
+                    st.info(f"⚖️ **Zhruba férové:** MOS {mos_dcf*100:+.1f}% (v rámci šumu modelu).")
                 else:
-                    st.warning(f"🚀 Trh očekává agresivní růst ({implied_growth*100:.1f}%) - vysoká očekávání, riziko zklamání")
+                    st.warning(f"⚠️ **Nadhodnocené podle DCF:** MOS {mos_dcf*100:+.1f}% (trh platí prémii).")
+
+            # 2) Poznámka k použitému cash-flow
+            try:
+                if fcf and dcf_fcf_used and fcf > 0 and abs(dcf_fcf_used - fcf) / max(abs(fcf), 1.0) > 0.25:
+                    st.markdown(
+                        f"• Pro DCF byl použit **upravený cash-flow proxy** (OCF-based), protože reportované FCF je velmi nízké vůči Operating Cash Flow. {qmark('Typicky „Amazon style“: firma silně reinvestuje. V takovém případě může být DCF z čistého FCF zavádějící.')}",
+                        unsafe_allow_html=True,
+                    )
+            except Exception:
+                pass
+
+            # 3) Reverse DCF (Implied Growth)
+            if implied_growth is None:
+                st.markdown(
+                    f"• **Implied Growth (Reverse DCF)** není dostupný. {qmark('Počítá se růst FCF, při kterém by DCF (se stejným WACC a exit multiple) vyšel přesně na aktuální cenu. Potřebuje kladný FCF/OCF proxy, počet akcií a cenu.')}",
+                    unsafe_allow_html=True,
+                )
+            else:
+                diff = implied_growth - used_dcf_growth
+
+                # klasifikace očekávání trhu
+                if implied_growth < 0:
+                    st.warning(f"📉 Trh implikuje **pokles FCF** ({implied_growth*100:.1f}% ročně).")
+                elif implied_growth < 0.05:
+                    st.info(f"📊 Trh implikuje **nízký růst** ({implied_growth*100:.1f}% ročně).")
+                elif implied_growth < 0.15:
+                    st.success(f"✅ Trh implikuje **zdravý růst** ({implied_growth*100:.1f}% ročně).")
+                else:
+                    st.warning(f"🚀 Trh implikuje **agresivní růst** ({implied_growth*100:.1f}% ročně) – riziko zklamání.")
+
+                # porovnání s tvým modelem
+                if abs(diff) >= 0.05:
+                    direction = "vyšší" if diff > 0 else "nižší"
+                    st.markdown(
+                        f"• Oproti tvému modelu je implied growth o **{abs(diff)*100:.1f} p.b. {direction}** (model: {used_dcf_growth*100:.1f}% / trh: {implied_growth*100:.1f}%). {qmark('Když trh implikuje výrazně vyšší růst než model, akcie bývá „priced for perfection“. Naopak výrazně nižší implied growth může znamenat příležitost – nebo reálné problémy.')}",
+                        unsafe_allow_html=True,
+                    )
+
+
 
             # Monte Carlo DCF
             st.markdown("---")
-            st.markdown("### 🎲 Monte Carlo DCF Simulace (1 000 scénářů)")
+            section_title("🎲 Monte Carlo DCF Simulace (1 000 scénářů)", "Simulace generuje 1 000 scénářů a náhodně rozptyluje růst (±30 %), WACC (±15 %) a exit multiple (±20 %). Výsledek je distribuce férové ceny (percentily).", level=3)
             if mc_dcf:
                 import plotly.graph_objects as go
                 mc_col1, mc_col2, mc_col3 = st.columns(3)
@@ -4999,21 +5500,22 @@ def main():
                         mean_fv = mc_dcf["mean"]
                         std_fv = mc_dcf.get("std", mean_fv * 0.3)
                         if std_fv > 0:
-                            from scipy import stats as scipy_stats
                             try:
+                                from scipy import stats as scipy_stats
                                 prob_upside = float(scipy_stats.norm.sf(current_price, mean_fv, std_fv)) * 100
                             except Exception:
+                                # fallback (bez SciPy): hrubý odhad z normalizované vzdálenosti od mean
                                 prob_upside = 100 * max(0, min(1, (mean_fv - current_price) / (2 * std_fv) + 0.5))
                     st.metric("Pravděp. undervalued", f"{prob_upside:.0f}%" if prob_upside is not None else "—")
                     st.metric("Simulací", mc_dcf.get("n", 0))
 
-                st.caption(f"💡 Monte Carlo přidává náhodné odchylky k growth rate (±30%), WACC (±15%) a terminal growth (±0.5%). P10/P90 = 10./90. percentil všech scénářů.")
+                st.caption("💡 Monte Carlo rozptyluje growth (±30 %), WACC (±15 %) a exit multiple (±20 %). P10/P90 = 10./90. percentil všech scénářů. Model používá stejný cash/debt bridge jako hlavní DCF.")
             else:
-                st.info("Monte Carlo není dostupné (chybí FCF data)")
+                st.info("Monte Carlo není dostupné. Důvody: chybí kladný FCF/OCF proxy nebo počet akcií, případně se nevygeneroval žádný validní scénář (zkus upravit parametry).")
 
             # Investment Simulator
             st.markdown("---")
-            st.markdown("### 💰 Co kdybych investoval X Kč?")
+            section_title("💰 Co kdybych investoval X Kč?", "Historická simulace: kdybys investoval před N lety a držel do dneška. Není to predikce budoucnosti.", level=3)
             sim_col1, sim_col2 = st.columns([1, 2])
             with sim_col1:
                 sim_amount = st.number_input("Investovaná částka (Kč)", min_value=1000, max_value=10_000_000,
@@ -5051,7 +5553,7 @@ def main():
                     st.info("Zadej částku a klikni na 'Spustit simulaci'")
         
         else:
-            st.warning("⚠️ Nedostatek dat pro DCF (chybí FCF nebo počet akcií)")
+            na_box("DCF valuace", "chybí kladný FCF/OCF proxy nebo počet akcií", "DCF potřebuje FCF/OCF proxy > 0 a shares > 0.")
     
     # ------------------------------------------------------------------------
     # TAB 7: Technická Analýza
@@ -5320,12 +5822,6 @@ def main():
                     "dcf_fair": fair_value_dcf,
                     "mos": mos_dcf,
                     "verdict": verdict,
-                    "insider_label": (insider_signal.get("label") if isinstance(insider_signal, dict) else None),
-                    "insider_signal": (insider_signal.get("signal") if isinstance(insider_signal, dict) else None),
-                    "insider_buys": (insider_signal.get("recent_buys") if isinstance(insider_signal, dict) else None),
-                    "insider_sells": (insider_signal.get("recent_sells") if isinstance(insider_signal, dict) else None),
-                    "insider_cluster_buying": (insider_signal.get("cluster_buying") if isinstance(insider_signal, dict) else None),
-                    "insider_cluster_selling": (insider_signal.get("cluster_selling") if isinstance(insider_signal, dict) else None),
                 }
                 _existing = watch.get("items", {}).get(ticker, {})
                 _snapshots = _existing.get("snapshots", [])
@@ -5375,26 +5871,10 @@ def main():
                     status = "⏳ Wait"
                     diff_pct = None
 
-                # Insider signal from last saved snapshot (fast + stable). If missing, show "—".
-                ins_txt = "—"
-                try:
-                    _snaps = item.get("snapshots", []) if isinstance(item, dict) else []
-                    _ls = _snaps[-1] if _snaps else {}
-                    _lbl = _ls.get("insider_label")
-                    _sig = _ls.get("insider_signal")
-                    if _lbl:
-                        if _sig is not None and isinstance(_sig, (int, float)):
-                            ins_txt = f"{_lbl} ({_sig:.0f})"
-                        else:
-                            ins_txt = str(_lbl)
-                except Exception:
-                    pass
-
                 rows.append({
                     "Ticker": tkr,
                     "Aktuální cena": fmt_money(price_now),
                     "Cílová cena": fmt_money(tgt),
-                    "Insider (6m)": ins_txt,
                     "Status": status,
                     "Aktualizováno": item.get("updated_at", "")[:10]
                 })
