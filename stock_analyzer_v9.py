@@ -697,11 +697,12 @@ def monte_carlo_dcf(
     wacc: float,
     years: int,
     shares_outstanding: float,
+    total_cash: float = 0.0, # <--- Nový argument
+    total_debt: float = 0.0, # <--- Nový argument
     n_simulations: int = 1000
 ) -> Dict[str, Any]:
     """
     Monte Carlo simulace DCF - vrací distribuci fair values.
-    Parametry jsou střední hodnoty, simulace přidává náhodnost.
     """
     try:
         results = []
@@ -712,13 +713,18 @@ def monte_carlo_dcf(
             sim_growth = rng.normal(growth_rate, growth_rate * 0.3)
             sim_wacc = rng.normal(wacc, wacc * 0.15)
             sim_terminal = rng.normal(terminal_growth, 0.005)
+            
+            # Clamp values to sane ranges
             sim_wacc = max(0.05, min(0.25, sim_wacc))
             sim_terminal = max(0.0, min(0.05, sim_terminal))
 
             if sim_wacc <= sim_terminal:
                 continue
 
-            fv = calculate_dcf_fair_value(fcf, sim_growth, sim_terminal, sim_wacc, years, shares_outstanding)
+            fv = calculate_dcf_fair_value(
+                fcf, sim_growth, sim_terminal, sim_wacc, years, shares_outstanding,
+                total_cash, total_debt # Předáváme dál
+            )
             if fv and fv > 0:
                 results.append(fv)
 
@@ -2506,36 +2512,7 @@ def build_scorecard_advanced(metrics: Dict[str, Metric], info: Dict[str, Any]) -
 # DCF VALUATION
 # ============================================================================
 
-def calculate_dcf_fair_value(
-    fcf: float,
-    growth_rate: float = 0.10,
-    terminal_growth: float = 0.03,
-    wacc: float = 0.10,
-    years: int = 5,
-    shares_outstanding: Optional[float] = None
-) -> Optional[float]:
-    """DCF calculation."""
-    if fcf <= 0 or shares_outstanding is None or shares_outstanding <= 0:
-        return None
-    
-    try:
-        pv_sum = 0.0
-        current_fcf = fcf
-        
-        for year in range(1, years + 1):
-            current_fcf *= (1 + growth_rate)
-            pv_sum += current_fcf / ((1 + wacc) ** year)
-        
-        terminal_fcf = current_fcf * (1 + terminal_growth)
-        terminal_value = terminal_fcf / (wacc - terminal_growth)
-        pv_terminal = terminal_value / ((1 + wacc) ** years)
-        
-        enterprise_value = pv_sum + pv_terminal
-        fair_value_per_share = enterprise_value / shares_outstanding
-        
-        return fair_value_per_share
-    except Exception:
-        return None
+
 
 
 def reverse_dcf_implied_growth(
@@ -2544,7 +2521,9 @@ def reverse_dcf_implied_growth(
     terminal_growth: float = 0.03,
     wacc: float = 0.10,
     years: int = 5,
-    shares_outstanding: Optional[float] = None
+    shares_outstanding: Optional[float] = None,
+    total_cash: float = 0.0, # <--- Nový argument
+    total_debt: float = 0.0  # <--- Nový argument
 ) -> Optional[float]:
     """Calculate implied growth rate from current price."""
     if fcf <= 0 or shares_outstanding is None or shares_outstanding <= 0:
@@ -2552,7 +2531,10 @@ def reverse_dcf_implied_growth(
     
     try:
         def dcf_at_growth(g: float) -> float:
-            fv = calculate_dcf_fair_value(fcf, g, terminal_growth, wacc, years, shares_outstanding)
+            fv = calculate_dcf_fair_value(
+                fcf, g, terminal_growth, wacc, years, shares_outstanding,
+                total_cash, total_debt # Předáváme dál
+            )
             return fv if fv else 0.0
         
         low, high = -0.5, 1.0
