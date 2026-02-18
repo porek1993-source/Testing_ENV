@@ -912,13 +912,18 @@ def clamp(v: Optional[float], lo: float, hi: float) -> Optional[float]:
 # DATA FETCHING (CACHED)
 # ============================================================================
 
+# Najdi tuto funkci ve svém kódu a dočasně ji nahraď tímto:
 @st.cache_data(show_spinner=False, ttl=3600)
 def fetch_ticker_info(ticker: str) -> Dict[str, Any]:
     """Fetch basic info from Yahoo Finance."""
     try:
         t = yf.Ticker(ticker)
-        return t.info or {}
-    except Exception:
+        # Zkusíme vynutit načtení, abychom chytili případnou chybu s IP/Cookies
+        info = t.info
+        return info or {}
+    except Exception as e:
+        # TOTO PŘIDEJ PRO DEBUGGING:
+        st.error(f"DEBUG CHYBA pro {ticker}: {str(e)}")
         return {}
 
 
