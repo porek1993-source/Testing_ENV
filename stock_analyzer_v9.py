@@ -31,6 +31,13 @@ import yfinance as yf
 import streamlit as st
 import streamlit.components.v1 as components
 
+# --- New v10.0 modules ---
+import spp_database as db
+import spp_macro
+import spp_news
+import spp_charts
+import spp_screener
+
 
 # Page config must be the first Streamlit command
 st.set_page_config(
@@ -41,21 +48,234 @@ st.set_page_config(
 )
 
 
-# --- Layout fix (full width on desktop) ---
-st.markdown(
-    """
-    <style>
-      .block-container { max-width: 100% !important; padding-left: 1.2rem; padding-right: 1.2rem; }
-      @media (max-width: 768px) { .block-container { padding-left: 0.8rem; padding-right: 0.8rem; } }
-    </style>
-    """,
-    unsafe_allow_html=True,
-)
-# (duplicate CSS removed)
+# =============================================================================
+# DESIGN SYSTEM & CSS OVERHAUL (v10.0 Modern UI)
+# =============================================================================
 
-# =============================================================================
-# VYLEPŠENÍ v9.x (gating, diagnostika, robustnost UI) – bez zásahu do watchlistu
-# =============================================================================
+def load_custom_css():
+    st.markdown("""
+        <style>
+        /* 1. IMPORTS & VARS */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
+        
+        :root {
+            --bg-color: #000000;
+            --card-bg: rgba(255, 255, 255, 0.05);
+            --card-border: 1px solid rgba(255, 255, 255, 0.1);
+            --text-primary: #ffffff;
+            --text-secondary: #a0a0a0;
+            --accent-green: #00ff88;
+            --accent-red: #ff4444;
+            --accent-blue: #29b5e8;
+            --font-main: 'Inter', sans-serif;
+        }
+
+        /* 2. GLOBAL RESET */
+        .stApp {
+            background-color: var(--bg-color);
+            font-family: var(--font-main);
+        }
+        
+        h1, h2, h3, h4, h5, h6, p, label, button, input, textarea {
+            font-family: var(--font-main) !important;
+        }
+
+        /* 3. LAYOUT & CONTAINERS */
+        .block-container {
+            max-width: 95% !important;
+            padding-top: 2rem;
+            padding-bottom: 5rem;
+        }
+        
+        /* Remove top padding emptiness */
+        div[data-testid="stHeader"] {
+            background-color: transparent;
+        }
+
+        /* 4. CUSTOM COMPONENTS */
+        
+        /* Glassmorphism Card (Utility Class) */
+        .glass-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: var(--card-border);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+            transition: transform 0.2s ease, border-color 0.2s ease;
+        }
+        .glass-card:hover {
+            border-color: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+        }
+
+        /* Metrics inside cards */
+        .metric-label {
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            color: var(--text-secondary);
+            margin-bottom: 5px;
+        }
+        .metric-value {
+            font-size: 1.8rem;
+            font-weight: 700;
+            color: var(--text-primary);
+        }
+        .metric-delta {
+            font-size: 1rem;
+            font-weight: 600;
+            margin-top: 5px;
+        }
+        .text-green { color: var(--accent-green) !important; }
+        .text-red { color: var(--accent-red) !important; }
+        .text-blue { color: var(--accent-blue) !important; }
+
+        /* 5. STREAMLIT WIDGET OVERRIDES */
+        
+        /* Sidebar */
+        [data-testid="stSidebar"] {
+            background-color: #050505;
+            border-right: 1px solid #222;
+        }
+        
+        /* Tabs */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 5px;
+        }
+        .stTabs [data-baseweb="tab"] {
+            background-color: transparent;
+            border-radius: 4px;
+            color: var(--text-secondary);
+            font-weight: 600;
+            padding: 4px 16px;
+        }
+        .stTabs [aria-selected="true"] {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+            color: var(--accent-green) !important;
+            border-bottom: 2px solid var(--accent-green);
+        }
+
+        /* Inputs */
+        .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
+            background-color: #111 !important;
+            color: white !important;
+            border: 1px solid #333 !important;
+            border-radius: 8px;
+        }
+        
+        /* Dataframes */
+        [data-testid="stDataFrame"] {
+            border: 1px solid #333;
+            border-radius: 8px;
+        }
+
+        /* Buttons */
+        div.stButton > button {
+            background: linear-gradient(45deg, #111, #222);
+            color: white;
+            border: 1px solid #444;
+            border-radius: 8px;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        div.stButton > button:hover {
+            border-color: var(--accent-green);
+            color: var(--accent-green);
+        }
+        div.stButton > button[kind="primary"] {
+            background: linear-gradient(90deg, #00ff88, #00cc6a);
+            color: black;
+            border: none;
+        }
+
+        /* Warning/Info boxes */
+        .warning-box {
+            background: rgba(255, 68, 68, 0.1);
+            border-left: 4px solid var(--accent-red);
+            padding: 10px 15px;
+            border-radius: 4px;
+            color: #ffcccc;
+            margin-bottom: 10px;
+        }
+        .success-box {
+            background: rgba(0, 255, 136, 0.1);
+            border-left: 4px solid var(--accent-green);
+            padding: 10px 15px;
+            border-radius: 4px;
+            color: #ccffdd;
+            margin-bottom: 10px;
+        }
+        .info-box {
+            background: rgba(41, 181, 232, 0.1);
+            border-left: 4px solid var(--accent-blue);
+            padding: 10px 15px;
+            border-radius: 4px;
+            color: #cceeff;
+            margin-bottom: 10px;
+        }
+
+        /* ----------------------------------------------------------- */
+        /* 6. ADVANCED POLISH (Phase 7 - Senior Frontend Details) */
+        /* ----------------------------------------------------------- */
+        
+        /* Custom Scrollbars (Webkit) */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: #000000; 
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #333; 
+            border-radius: 3px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--accent-green); 
+        }
+
+        /* Professional Data Tables (Bloomberg Style) */
+        [data-testid="stDataFrame"] {
+            border: 1px solid #222 !important;
+            border-radius: 0px !important;
+        }
+        [data-testid="stDataFrame"] div[data-testid="stVerticalBlock"] {
+             gap: 0 !important;
+        }
+        
+        /* Neon Focus States & Glows */
+        input:focus, textarea:focus, select:focus {
+            border-color: var(--accent-green) !important;
+            box-shadow: 0 0 8px rgba(0, 255, 136, 0.15) !important;
+            transition: all 0.3s ease;
+        }
+        
+        /* Sidebar Polish */
+        section[data-testid="stSidebar"] hr {
+            background-color: #222 !important;
+            margin: 2rem 0 !important;
+            border: none !important;
+            height: 1px !important;
+        }
+        
+        /* Toast Notification Polish */
+        div[data-testid="stToast"] {
+            background-color: rgba(10, 10, 10, 0.95) !important;
+            border: 1px solid #333 !important;
+            border-left: 4px solid var(--accent-green) !important;
+            color: white !important;
+            border-radius: 8px !important;
+            backdrop-filter: blur(10px);
+        }
+
+        </style>
+    """, unsafe_allow_html=True)
+
+load_custom_css()
 
 def normalize_ticker(raw: str) -> str:
     """Normalizuje běžné aliasy a zápisy tickerů (bez web lookup)."""
@@ -373,6 +593,14 @@ ALPHAVANTAGE_API_KEY = _get_secret("ALPHAVANTAGE_API_KEY", "")
 FINNHUB_API_KEY = _get_secret("FINNHUB_API_KEY", "")
 NINJAS_API_KEY = _get_secret("NINJAS_API_KEY", "") or _get_secret("Ninjas_API_KEY", "")
 
+# --- New v10.0 API keys ---
+SUPABASE_URL = _get_secret("SUPABASE_URL", "")
+SUPABASE_KEY = _get_secret("SUPABASE_KEY", "")
+FRED_API_KEY = _get_secret("FRED_API_KEY", "")
+POLYGON_API_KEY = _get_secret("POLYGON_API_KEY", "")
+TWELVEDATA_API_KEY = _get_secret("TWELVEDATA_API_KEY", "")
+NEWSAPI_KEY = _get_secret("NEWSAPI_KEY", "")
+
 # PDF Export
 try:
     from reportlab.lib.pagesizes import letter
@@ -677,131 +905,122 @@ def calculate_altman_zscore(
     market_cap: Optional[float] = None,
 ) -> Tuple[Optional[float], str]:
     """
-    Altman Z-Score: bankruptcy risk indicator.
-    Classic (public manufacturing) model:
-      Z = 1.2*(WC/TA) + 1.4*(RE/TA) + 3.3*(EBIT/TA) + 0.6*(MVE/TL) + 1.0*(Sales/TA)
-
-    Poznámka:
-    - Pro banky/pojišťovny je model často nevhodný (jiná struktura rozvahy).
-    - yfinance `.info` často neobsahuje `totalAssets` a další klíče → primárně bereme z výkazů.
+    Altman Z-Score: bankruptcy risk indicator (Manufacturing variant).
+    Z = 1.2A + 1.4B + 3.3C + 0.6D + 1.0E
+    
+    A = Working Capital / Total Assets
+    B = Retained Earnings / Total Assets
+    C = EBIT / Total Assets
+    D = Market Value of Equity / Total Liabilities
+    E = Sales / Total Assets
     """
     try:
         sector = (info.get("sector") or "").lower()
         industry = (info.get("industry") or "").lower()
-        if "financial" in sector or any(k in industry for k in ["bank", "insurance", "capital markets"]):
-            return None, "N/A pro finanční sektor"
+        # Finanční sektor se nehodnotí Altmanem (mají jinou strukturu rozvahy)
+        if "financial" in sector or any(k in industry for k in ["bank", "insurance", "capital markets", "asset management"]):
+            return None, "N/A (Finanční sektor)"
 
-        def _df_value(df: Optional[pd.DataFrame], candidates: List[str]) -> Optional[float]:
+        # Helper: Robust DataFrame Value Extraction
+        def _df_get(df: Optional[pd.DataFrame], keys: List[str]) -> Optional[float]:
             if df is None or getattr(df, "empty", True):
                 return None
-            for c in candidates:
-                if c in df.index:
+            
+            # 1. Exact match
+            for k in keys:
+                if k in df.index:
                     try:
-                        return safe_float(df.loc[c].iloc[0])
-                    except Exception:
-                        continue
+                        val = safe_float(df.loc[k].iloc[0])
+                        if val is not None: return val
+                    except: pass
+            
+            # 2. Case-insensitive / strip match
+            idx_map = {str(i).strip().lower(): i for i in df.index}
+            for k in keys:
+                clean_k = k.strip().lower()
+                if clean_k in idx_map:
+                    try:
+                        val = safe_float(df.loc[idx_map[clean_k]].iloc[0])
+                        if val is not None: return val
+                    except: pass
             return None
 
-        missing = []
+        # ── 1. Total Assets ──
+        ta = safe_float(info.get("totalAssets")) or _df_get(balance, ["Total Assets", "Assets"])
+        if not ta or ta <= 0:
+            return None, "Chybí Total Assets"
 
-        total_assets = safe_float(info.get("totalAssets")) or _df_value(balance, ["Total Assets"])
-        if not total_assets or total_assets <= 0:
-            return None, "Data nedostupná"
+        # ── 2. Working Capital (CA - CL) ──
+        ca = safe_float(info.get("totalCurrentAssets")) or _df_get(balance, ["Total Current Assets", "Current Assets"])
+        cl = safe_float(info.get("totalCurrentLiabilities")) or _df_get(balance, ["Total Current Liabilities", "Current Liabilities"])
+        
+        wc = 0.0
+        if ca is not None and cl is not None:
+            wc = ca - cl
+        else:
+            # Fallback estimation if explicit WC is missing
+            wc_guess = safe_float(info.get("workingCapital"))
+            if wc_guess: wc = wc_guess
 
-        # Working capital = current assets - current liabilities
-        current_assets = safe_float(info.get("totalCurrentAssets")) or _df_value(
-            balance, ["Total Current Assets", "Current Assets"]
-        )
-        current_liab = safe_float(info.get("totalCurrentLiabilities")) or _df_value(
-            balance, ["Total Current Liabilities", "Current Liabilities"]
-        )
-        if current_assets is None or current_liab is None:
-            missing.append("WC")
-        working_capital = (current_assets or 0) - (current_liab or 0)
-
-        # Retained earnings
-        retained_earnings = (
+        # ── 3. Retained Earnings ──
+        re_val = (
             safe_float(info.get("retainedEarnings") or info.get("retainedEarningsAccumulatedDeficit"))
-            or _df_value(balance, ["Retained Earnings", "Retained Earnings (Accumulated Deficit)"])
-            or 0
+            or _df_get(balance, ["Retained Earnings", "Retained Earnings (Accumulated Deficit)", "Retained Earnings (Accumulated Deficit)"])
+            or 0.0
         )
-        if retained_earnings == 0:
-            missing.append("RE")
 
-        # EBIT
-        ebit = safe_float(info.get("ebit")) or _df_value(income, ["Ebit", "EBIT", "Operating Income"]) or 0
-        if ebit == 0:
-            # fallback to EBITDA if nothing else
-            ebit = safe_float(info.get("ebitda")) or 0
-        if ebit == 0:
-            missing.append("EBIT")
+        # ── 4. EBIT ──
+        ebit = safe_float(info.get("ebit")) or _df_get(income, ["EBIT", "Ebit", "Operating Income", "Operating Profit"])
+        if ebit is None:
+            # Fallback: EBITDA - D&A
+            ebitda = safe_float(info.get("ebitda")) or _df_get(income, ["EBITDA", "Normalized EBITDA"])
+            if ebitda:
+                ebit = ebitda  # Approximation if D&A missing, better than 0
 
-        # Revenue / Sales
-        revenue = safe_float(info.get("totalRevenue")) or _df_value(income, ["Total Revenue", "Operating Revenue"]) or 0
-        if revenue == 0:
-            missing.append("Sales")
+        # ── 5. Market Value of Equity (Market Cap) ──
+        mve = market_cap
+        if not mve:
+            mve = safe_float(info.get("marketCap"))
+        if not mve:
+            p = safe_float(info.get("currentPrice") or info.get("regularMarketPrice") or info.get("previousClose"))
+            sh = safe_float(info.get("sharesOutstanding") or info.get("impliedSharesOutstanding"))
+            if p and sh:
+                mve = p * sh
+        
+        # ── 6. Total Liabilities ──
+        tl = safe_float(info.get("totalLiabilities")) or _df_get(balance, ["Total Liabilities", "Total Liab", "Total Liabilities Net Minority Interest"])
+        if not tl:
+            # Estimate: Assets - Equity
+            te = safe_float(info.get("totalStockholderEquity")) or _df_get(balance, ["Total Stockholder Equity", "Stockholders Equity", "Total Equity Gross Minority Interest"])
+            if te and ta:
+                tl = ta - te
+        
+        # ── 7. Sales (Revenue) ──
+        sales = safe_float(info.get("totalRevenue")) or _df_get(income, ["Total Revenue", "Operating Revenue", "Revenue"]) or 0.0
 
-        # Market cap (MVE) - try to estimate if missing
-        if market_cap is None:
-            market_cap = safe_float(info.get("marketCap"))
-        if market_cap is None or market_cap == 0:
-            price = safe_float(info.get("regularMarketPrice") or info.get("currentPrice"))
-            shares = safe_float(info.get("sharesOutstanding"))
-        shares_estimated = False
-        if shares:
-            diag_set_source("shares", {"value": shares, "source": "info.sharesOutstanding"})
-            if price and shares:
-                market_cap = price * shares
-        market_cap = market_cap or 0
-        if market_cap == 0:
-            missing.append("MVE")
+        # Data Validation for critical components
+        if mve is None or mve <= 0: return None, "Chybí Market Cap"
+        if tl is None or tl <= 0: return None, "Chybí Total Liabilities"
+        if ebit is None: ebit = 0.0 # Conservative fallback
 
-        # Total liabilities (book) – NOT totalDebt
-        total_liabilities = safe_float(info.get("totalLiabilities")) or _df_value(
-            balance,
-            [
-                "Total Liab",
-                "Total Liabilities Net Minority Interest",
-                "Total Liabilities",
-            ],
-        )
-        if total_liabilities is None or total_liabilities <= 0:
-            # try assets - equity
-            total_equity = _df_value(
-                balance,
-                [
-                    "Total Stockholder Equity",
-                    "Stockholders Equity",
-                    "Total Equity Gross Minority Interest",
-                    "Total Equity",
-                ],
-            )
-            if total_equity is not None:
-                total_liabilities = total_assets - total_equity
+        # ── Calculation ──
+        A = wc / ta
+        B = re_val / ta
+        C = ebit / ta
+        D = mve / tl
+        E = sales / ta
 
-        if total_liabilities is None or total_liabilities <= 0:
-            return None, "Data nedostupná (liabilities)"
-
-        # Components
-        x1 = working_capital / total_assets
-        x2 = retained_earnings / total_assets
-        x3 = ebit / total_assets
-        x4 = market_cap / total_liabilities
-        x5 = revenue / total_assets
-
-        z = 1.2 * x1 + 1.4 * x2 + 3.3 * x3 + 0.6 * x4 + 1.0 * x5
-
-        if z > 2.99:
+        Z = (1.2 * A) + (1.4 * B) + (3.3 * C) + (0.6 * D) + (1.0 * E)
+        
+        # Verdict
+        if Z > 2.99:
             zone = "✅ Bezpečná zóna"
-        elif z > 1.81:
+        elif Z > 1.81:
             zone = "⚠️ Šedá zóna"
         else:
             zone = "🚨 Riziko bankrotu"
 
-        if missing:
-            zone = f"{zone} (odhad: chybí {', '.join(sorted(set(missing)))})"
-
-        return round(float(z), 2), zone
+        return round(float(Z), 2), zone
 
     except Exception:
         return None, "Chyba výpočtu"
@@ -3207,7 +3426,17 @@ def generate_ai_analyst_report_with_retry(ticker: str, company: str, info: Dict,
     """
     Wrapper s retry logikou pro Free Tier Gemini 2.5 Flash Lite.
     Zkusí max MAX_AI_RETRIES pokusů s RETRY_DELAY sekundami mezi pokusy.
+    v10.0: Supabase cache (6h TTL) – pokud existuje čerstvý report, vrátí se z cache.
     """
+    # --- v10.0: Check Supabase cache first ---
+    try:
+        cached = db.get_cached_ai_report(ticker, max_age_hours=6)
+        if cached:
+            cached["_from_cache"] = True
+            return cached
+    except Exception:
+        pass  # cache miss or DB unavailable – proceed with fresh call
+
     for attempt in range(MAX_AI_RETRIES):
         try:
             result = generate_ai_analyst_report(ticker, company, info, metrics, 
@@ -3226,6 +3455,13 @@ def generate_ai_analyst_report_with_retry(ticker: str, company: str, info: Dict,
                         result["market_situation"] = "⚠️ AI je přetížená (Rate Limit). Zkuste to za chvíli."
                         return result
             
+            # --- v10.0: Cache successful result in Supabase ---
+            if result.get("verdict") and result["verdict"] != "HOLD":
+                try:
+                    db.cache_ai_report(ticker, result)
+                except Exception:
+                    pass  # caching is best-effort
+
             return result
             
         except Exception as e:
@@ -3287,7 +3523,33 @@ def generate_ai_analyst_report(ticker: str, company: str, info: Dict, metrics: D
     debt_ebitda = safe_div(info.get("totalDebt"), info.get("ebitda"))
     fcf_yield_val = metrics.get("fcf_yield").value if metrics.get("fcf_yield") else 0
 
-    # 3. SESTAVENÍ PROMPTU (Tady byla ta chyba v odsazení)
+    # v10.0: Live macro context from FRED + recent news headlines
+    _macro_ctx = ""
+    try:
+        _macro_summary = spp_macro.get_macro_summary()
+        if _macro_summary:
+            _macro_lines = [f"  - {k}: {v}" for k, v in _macro_summary.items()]
+            _macro_ctx = "\n".join(_macro_lines)
+    except Exception:
+        pass
+
+    _news_ctx = ""
+    try:
+        _news_articles = spp_news.fetch_stock_news(ticker, max_results=5)
+        if _news_articles:
+            _news_ctx = "\n".join(
+                [f"  - [{a.get('source','')}] {a.get('title','')}" for a in _news_articles[:5]]
+            )
+    except Exception:
+        pass
+
+    # 3. SESTAVENÍ PROMPTU
+    _insider_ctx = ""
+    if insider_signal and isinstance(insider_signal, dict):
+        sig_val = insider_signal.get("signal", 0)
+        sig_label = insider_signal.get("label", "")
+        _insider_ctx = f"\n- Insider Signal: {sig_val} ({sig_label})"
+
     context = f"""
 Jsi Seniorní Portfolio Manažer a Contrarian Analyst se specializací na ASYMETRICKÝ RISK/REWARD.
 DŮLEŽITÉ: Celou analýzu a všechny texty v JSON výstupu napiš VÝHRADNĚ V ČEŠTINĚ.
@@ -3297,13 +3559,21 @@ VSTUPNÍ DATA:
 - Tržní cena: {fmt_money(current_price)} | Kalkulovaná Férovka (DCF): {fmt_money(dcf_fair_value)}
 - Metriky: P/E: {info.get('trailingPE')}, ROIC: {fmt_pct(roic_val)}, Net Debt/EBITDA: {fmt_num(debt_ebitda)}, FCF Yield: {fmt_pct(fcf_yield_val)}
 - Tržní Režim: {regime}
-- Makro události: {macro_events[:2]}
+- Scorecard (0-100): {scorecard}{_insider_ctx}
+
+MAKROEKONOMICKÝ KONTEXT (FRED live data):
+{_macro_ctx if _macro_ctx else '  Nedostupné'}
+
+NEDÁVNÉ ZPRÁVY O FIRMĚ:
+{_news_ctx if _news_ctx else '  Nedostupné'}
 
 TVŮJ ANALYTICKÝ RÁMEC (Chain-of-Thought):
 1. FUNDAMENTÁLNÍ PODLAHA: Je cena blízko hodnotě aktiv? Jak bezpečný je dluh?
 2. EMBEDDED OPTIONALITY: Má firma aktiva (data, patenty), která trh oceňuje nulou?
 3. RED TEAMING: Hraj roli Short Sellera. Proč tato firma za 2 roky ztratí 50 % hodnoty?
 4. ASYMETRIE: Je poměr mezi Downside a Upside alespoň 1:3?
+5. MAKRO VLIV: Jak aktuální makro prostředí (úrokové sazby, inflace, VIX) ovlivňuje tuto firmu?
+6. SENTIMENT Z MÉDIÍ: Zohledni nedávné zprávy a mediální sentiment.
 
 VÝSTUP POUZE JSON:
 {{
@@ -3316,7 +3586,8 @@ VÝSTUP POUZE JSON:
   "wait_for_price": {current_price * 0.85 if current_price else 0},
   "risk_reward_ratio": "Např. 1:4",
   "reasoning_synthesis": "Konečný verdikt pro investiční komisi. Proč právě teď?",
-  "confidence": "HIGH/MEDIUM/LOW"
+  "confidence": "HIGH/MEDIUM/LOW",
+  "macro_impact": "Stručný komentář k vlivu makro prostředí na tuto investici."
 }}
 """
 
@@ -3395,23 +3666,27 @@ def get_earnings_calendar_estimate(ticker: str, info: Dict[str, Any]) -> Optiona
 
 
 # ============================================================================
-# WATCHLIST & MEMOS
+# WATCHLIST & MEMOS  (v10.0 – Supabase + local JSON fallback via spp_database)
 # ============================================================================
 
 def get_watchlist() -> Dict[str, Any]:
-    return load_json(WATCHLIST_PATH, {"items": {}})
+    """Supabase-first, local JSON fallback."""
+    return db.get_watchlist()
 
 
 def set_watchlist(data: Dict[str, Any]) -> None:
-    save_json(WATCHLIST_PATH, data)
+    """Supabase-first, local JSON fallback."""
+    db.set_watchlist(data)
 
 
 def get_memos() -> Dict[str, Any]:
-    return load_json(MEMOS_PATH, {"memos": {}})
+    """Supabase-first, local JSON fallback."""
+    return db.get_memos()
 
 
 def set_memos(data: Dict[str, Any]) -> None:
-    save_json(MEMOS_PATH, data)
+    """Supabase-first, local JSON fallback."""
+    db.set_memos(data)
 
 
 # ============================================================================
@@ -4533,6 +4808,28 @@ def main():
             float(insider_signal.get("signal", 0)),
             tech_signals,
         )
+
+        # v10.0: Auto-save snapshot to Supabase (once per ticker per session)
+        _snap_key = f"_snapshot_saved_{ticker}"
+        if not st.session_state.get(_snap_key):
+            try:
+                _pe_val = safe_float(info.get("trailingPE"))
+                db.save_snapshot(
+                    ticker=ticker,
+                    current_price=current_price,
+                    fair_value_dcf=fair_value_dcf,
+                    scorecard=scorecard.get("total", 0) if isinstance(scorecard, dict) else 0,
+                    mos_dcf=round((1 - current_price / fair_value_dcf) * 100, 1)
+                        if fair_value_dcf and current_price and fair_value_dcf > 0 else None,
+                    verdict=verdict,
+                    piotroski=piotroski_score,
+                    altman_z=altman_z,
+                    pe=_pe_val,
+                    insider_signal=float(insider_signal.get("signal", 0)),
+                )
+                st.session_state[_snap_key] = True
+            except Exception:
+                pass  # silent — snapshot is best-effort
     
     # ========================================================================
     # SMART HEADER (6 karet)
@@ -4554,7 +4851,7 @@ def main():
     
     with h1:
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="glass-card">
             <div class="metric-label">Aktuální cena</div>
             <div class="metric-value">{fmt_money(current_price)}</div>
         </div>
@@ -4564,7 +4861,7 @@ def main():
         analyst_price = analyst_target if analyst_target else None
         analyst_delta = f"+{((analyst_price/current_price - 1)*100):.1f}%" if analyst_price and current_price else "—"
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="glass-card">
             <div class="metric-label">Férovka (Analytici)</div>
             <div class="metric-value">{fmt_money(analyst_price)}</div>
             <div class="metric-delta" style="color: #00ff88;">{analyst_delta if analyst_price else ""}</div>
@@ -4575,7 +4872,7 @@ def main():
         dcf_mos_str = f"{mos_dcf*100:+.1f}% MOS" if mos_dcf is not None else "—"
         dcf_color = "#00ff88" if mos_dcf and mos_dcf > 0 else "#ff4444"
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="glass-card">
             <div class="metric-label">Férovka (DCF)</div>
             <div class="metric-value">{fmt_money(fair_value_dcf)}</div>
             <div class="metric-delta" style="color: {dcf_color};">{dcf_mos_str}</div>
@@ -4589,7 +4886,7 @@ def main():
         else:
             ath_str = "—"
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="glass-card">
             <div class="metric-label">ATH</div>
             <div class="metric-value">{fmt_money(ath)}</div>
             <div class="metric-delta">{ath_str} od vrcholu</div>
@@ -4605,7 +4902,7 @@ def main():
             earn_color = "#aaaaaa"
             earn_label = "—"
         st.markdown(f"""
-        <div class="metric-card">
+        <div class="glass-card">
             <div class="metric-label">📅 Earnings</div>
             <div class="metric-value" style="font-size:1.1rem;">{next_earnings.strftime('%d.%m.%Y') if next_earnings else '—'}</div>
             <div class="metric-delta" style="color: {earn_color};">{earn_label}</div>
@@ -4614,7 +4911,7 @@ def main():
     
     with h6:
         st.markdown(f"""
-        <div class="metric-card" style="border: 2px solid {verdict_color};">
+        <div class="glass-card" style="border: 2px solid {verdict_color};">
             <div class="metric-label">Sektor</div>
             <div class="metric-value" style="font-size: 1.1rem;">{sector[:18]}</div>
             <div class="metric-delta" style="color: {verdict_color}; font-weight: 700;">{verdict}</div>
@@ -4636,7 +4933,9 @@ def main():
         "💰 Valuace (DCF)",
         "📐 Tech. Analýza",
         "📝 Memo & Watchlist",
-        "🐦 Social & Guru"
+        "🐦 Social & Guru",
+        "🔍 Screener",
+        "💼 Portfolio"
     ])
 
     # Keep user on the tab they clicked (Streamlit rerun otherwise jumps to first tab)
@@ -4860,16 +5159,39 @@ def main():
     # ------------------------------------------------------------------------
     with tabs[1]:
         st.markdown('<div class="section-header">🗓️ Market Watch - Upcoming Events</div>', unsafe_allow_html=True)
-        
-        st.markdown("### 🌍 Makroekonomické události (příští 2 měsíce)")
-        
-        macro_df = pd.DataFrame(MACRO_CALENDAR)
+
+        # ── Live Macro Dashboard (FRED API) ──────────────────────────────
+        st.markdown("### 📡 Živý makro dashboard")
+        live_macro = spp_macro.fetch_live_macro_indicators()
+        if live_macro:
+            # Market Regime
+            regime = spp_macro.get_market_regime_macro()
+            st.markdown(f"**Aktuální makro režim:** {regime}")
+
+            # Indicators table
+            macro_live_df = pd.DataFrame(live_macro)
+            display_cols = ["Indikátor", "Hodnota", "Důležitost", "Popis"]
+            st.dataframe(macro_live_df[display_cols], use_container_width=True, hide_index=True)
+
+            # Yield Curve
+            yc_data = spp_macro.get_yield_curve_data()
+            yc_fig = spp_charts.build_yield_curve_chart(yc_data)
+            if yc_fig:
+                st.plotly_chart(yc_fig, use_container_width=True)
+        else:
+            st.info("💡 Pro živá makro data z FRED nastav `FRED_API_KEY` v secrets.toml")
+
+        st.markdown("---")
+
+        # ── Static Macro Calendar (fallback / upcoming events) ──────────
+        st.markdown("### 🌍 Nadcházející makro události")
+        macro_calendar = spp_macro.get_macro_calendar()
+        macro_df = pd.DataFrame(macro_calendar)
         macro_df['date'] = pd.to_datetime(macro_df['date'])
         macro_df = macro_df[macro_df['date'] >= dt.datetime.now()]
         macro_df = macro_df.sort_values('date')
-        
+
         if not macro_df.empty:
-            # Color code by importance
             def color_importance(val):
                 if val == "Critical":
                     return 'background-color: #ff4444; color: white; font-weight: bold;'
@@ -4877,8 +5199,7 @@ def main():
                     return 'background-color: #ff8800; color: white;'
                 else:
                     return 'background-color: #ffaa00;'
-            
-            styled_df = macro_df.style.applymap(color_importance, subset=['importance'])
+            styled_df = macro_df.style.map(color_importance, subset=['importance'])
             st.dataframe(styled_df, use_container_width=True, hide_index=True)
         
         st.markdown("---")
@@ -4963,6 +5284,10 @@ def main():
             # --- ZOBRAZENÍ VÝSLEDKŮ ---
             if 'ai_report' in st.session_state and st.session_state.ai_report_ticker == ticker:
                 report = st.session_state['ai_report']
+
+                # v10.0: Cache indicator
+                if report.get("_from_cache"):
+                    st.caption("⚡ Report načten z cache (Supabase, max 6h starý)")
                 
                 # 1. Gauge Chart (Ukazatel asymetrie)
                 import plotly.graph_objects as go
@@ -5010,7 +5335,11 @@ def main():
                 st.markdown("---")
                 st.markdown(f"**🛡️ Fundamentální podlaha:** {report.get('fundamental_floor', 'N/A')}")
                 st.info(f"**🎯 Strategická syntéza:** {report.get('reasoning_synthesis', 'N/A')}")
-                
+
+                # v10.0: Macro impact
+                _macro_impact = report.get("macro_impact")
+                if _macro_impact:
+                    st.warning(f"🌍 **Makro vliv:** {_macro_impact}")
                 # Spodní řada metrik
                 v_col1, v_col2, v_col3 = st.columns(3)
                 with v_col1:
@@ -5695,6 +6024,38 @@ def main():
                 else:
                     st.info(f"📊 Objem normální: {vt_label}")
 
+            # --- Interactive Candlestick Chart (v10.0) ---
+            st.markdown("---")
+            st.markdown("### 🕯️ Interaktivní svíčkový graf")
+            st.caption("Kompletní OHLCV chart s indikátory – Volume, RSI, MACD, Bollinger Bands, MA50/MA200 a DCF fair value linie.")
+
+            cc1, cc2, cc3, cc4 = st.columns(4)
+            with cc1:
+                _cc_vol = st.checkbox("Volume", value=True, key="cc_vol")
+            with cc2:
+                _cc_rsi = st.checkbox("RSI", value=True, key="cc_rsi")
+            with cc3:
+                _cc_macd = st.checkbox("MACD", value=True, key="cc_macd")
+            with cc4:
+                _cc_bb = st.checkbox("Bollinger Bands", value=True, key="cc_bb")
+
+            try:
+                fig_candle = spp_charts.build_candlestick_chart(
+                    price_history=price_history_1y,
+                    ticker=ticker,
+                    show_ma50=True,
+                    show_ma200=True,
+                    show_bollinger=_cc_bb,
+                    show_volume=_cc_vol,
+                    show_rsi=_cc_rsi,
+                    show_macd=_cc_macd,
+                    fair_value_dcf=locals().get("fair_value_dcf"),
+                    height=700,
+                )
+                st.plotly_chart(fig_candle, use_container_width=True)
+            except Exception as e:
+                st.warning(f"Svíčkový graf nelze vykreslit: {e}")
+
     # ------------------------------------------------------------------------
     # TAB 8: Memo & Watchlist  (formerly 7)
     # ------------------------------------------------------------------------
@@ -5925,7 +6286,44 @@ def main():
     with tabs[8]:
         st.markdown('<div class="section-header">🐦 Social & Guru</div>', unsafe_allow_html=True)
 
-        # Flatten options
+        # ── Automated News Feed (v10.0) ──────────────────────────────────
+        st.markdown("### 📰 Automatické zprávy")
+        news_articles = spp_news.fetch_stock_news(ticker, info.get("longName", ticker) if info else ticker)
+        if news_articles:
+            for art in news_articles[:8]:
+                src = art.get("source", "")
+                title = art.get("title", "")
+                url = art.get("url", "#")
+                pub = art.get("published", "")[:10] if art.get("published") else ""
+                st.markdown(
+                    f"- [{title}]({url}) — *{src}* {pub}"
+                )
+            # AI Sentiment Summary
+            if st.button("🤖 AI Sentiment Summary", key="btn_news_sentiment"):
+                with st.spinner("Analyzuji sentiment zpráv..."):
+                    sentiment_result = spp_news.analyze_news_sentiment_ai(
+                        news_articles[:6]
+                    )
+                if sentiment_result:
+                    sc_col1, sc_col2 = st.columns(2)
+                    with sc_col1:
+                        st.metric("Sentiment", sentiment_result.get("sentiment", "N/A"))
+                        st.metric("Skóre", sentiment_result.get("score", "N/A"))
+                    with sc_col2:
+                        st.markdown(f"**Souhrn:** {sentiment_result.get('summary', '—')}")
+                        themes = sentiment_result.get("themes", [])
+                        if themes:
+                            st.markdown(f"**Témata:** {', '.join(themes)}")
+                        risks = sentiment_result.get("risks", [])
+                        if risks:
+                            st.markdown(f"**Rizika:** {', '.join(risks)}")
+                else:
+                    st.info("Sentiment analysis vyžaduje GEMINI_API_KEY.")
+        else:
+            st.info("💡 Pro automatické zprávy nastav NEWSAPI_KEY nebo POLYGON_API_KEY.")
+
+        st.markdown("---")
+        st.markdown("### 🐦 Social Media & Guru Tracking")
         options = []
         option_map = {}
         for cat, people in GURUS.items():
@@ -6017,34 +6415,153 @@ def main():
                     st.markdown(result)
 
 
+    # ------------------------------------------------------------------------
+    # TAB 10: Screener
+    # ------------------------------------------------------------------------
+    with tabs[9]:
+        st.markdown('<div class="section-header">🔍 Mini Stock Screener</div>', unsafe_allow_html=True)
+        st.caption("Prohledej 50 nejpopulárnějších US akcií s vlastními filtry.")
+
+        with st.expander("⚙️ Filtry", expanded=True):
+            fc1, fc2, fc3 = st.columns(3)
+            with fc1:
+                scr_max_pe = st.number_input("Max P/E", min_value=0.0, value=0.0, step=1.0, key="scr_pe")
+                scr_min_roe = st.number_input("Min ROE %", min_value=0.0, value=0.0, step=1.0, key="scr_roe")
+            with fc2:
+                scr_max_pb = st.number_input("Max P/B", min_value=0.0, value=0.0, step=0.5, key="scr_pb")
+                scr_min_div = st.number_input("Min Div Yield %", min_value=0.0, value=0.0, step=0.5, key="scr_div")
+            with fc3:
+                scr_min_upside = st.number_input("Min Upside %", min_value=0.0, value=0.0, step=5.0, key="scr_upside")
+                scr_sector = st.text_input("Sektor (volitelné)", key="scr_sector")
+
+        if st.button("🚀 Spustit Screener", use_container_width=True, type="primary", key="btn_screener"):
+            with st.spinner("Načítám data pro ~50 akcií (cca 30–60s)..."):
+                scr_df = spp_screener.run_screener(
+                    max_pe=scr_max_pe if scr_max_pe > 0 else None,
+                    max_pb=scr_max_pb if scr_max_pb > 0 else None,
+                    min_div_yield=scr_min_div if scr_min_div > 0 else None,
+                    min_roe=scr_min_roe if scr_min_roe > 0 else None,
+                    min_upside=scr_min_upside if scr_min_upside > 0 else None,
+                    sector_filter=scr_sector if scr_sector.strip() else None,
+                )
+                st.session_state["screener_result"] = scr_df
+
+        if "screener_result" in st.session_state:
+            scr_df = st.session_state["screener_result"]
+            if scr_df is not None and not scr_df.empty:
+                st.success(f"✅ Nalezeno {len(scr_df)} akcií odpovídajících filtrům")
+                st.dataframe(scr_df, use_container_width=True, hide_index=True)
+            else:
+                st.warning("Žádné akcie neodpovídají zadaným filtrům.")
+
+    # ------------------------------------------------------------------------
+    # TAB 11: Portfolio Tracker
+    # ------------------------------------------------------------------------
+    with tabs[10]:
+        st.markdown('<div class="section-header">💼 Portfolio Tracker</div>', unsafe_allow_html=True)
+
+        # Add holding form
+        with st.expander("➕ Přidat pozici", expanded=False):
+            pf_cols = st.columns(4)
+            with pf_cols[0]:
+                pf_ticker = st.text_input("Ticker", key="pf_ticker").upper()
+            with pf_cols[1]:
+                pf_shares = st.number_input("Počet akcií", min_value=0.0, step=1.0, key="pf_shares")
+            with pf_cols[2]:
+                pf_buy_price = st.number_input("Nákupní cena ($)", min_value=0.0, step=1.0, key="pf_buy_price")
+            with pf_cols[3]:
+                pf_buy_date = st.date_input("Datum nákupu", key="pf_buy_date")
+
+            if st.button("Uložit do portfolia", key="btn_pf_add", type="primary"):
+                if pf_ticker and pf_shares > 0 and pf_buy_price > 0:
+                    ok = spp_screener.add_portfolio_holding(
+                        ticker=pf_ticker, shares=pf_shares,
+                        buy_price=pf_buy_price, buy_date=str(pf_buy_date)
+                    )
+                    if ok:
+                        st.success(f"✅ {pf_ticker} přidán do portfolia!")
+                    else:
+                        st.error("❌ Supabase není dostupný. Nastav SUPABASE_URL a SUPABASE_KEY.")
+                else:
+                    st.warning("Vyplň ticker, počet akcií a cenu.")
+
+        # Display portfolio
+        if st.button("🔄 Načíst portfolio", key="btn_pf_load", use_container_width=True):
+            with st.spinner("Načítám portfolio a aktuální ceny..."):
+                pf_summary = spp_screener.get_portfolio_summary()
+                st.session_state["pf_summary"] = pf_summary
+
+        if "pf_summary" in st.session_state:
+            pf = st.session_state["pf_summary"]
+            holdings = pf.get("holdings", [])
+
+            if holdings:
+                # Top metrics
+                pm1, pm2, pm3 = st.columns(3)
+                with pm1:
+                    st.metric("Celková hodnota", f"${pf['total_value']:,.2f}")
+                with pm2:
+                    pnl_delta = f"{pf['total_pnl']:+,.2f}$"
+                    st.metric("P&L", pnl_delta, delta=f"{pf['total_pnl_pct']:+.1f}%")
+                with pm3:
+                    st.metric("Náklad", f"${pf['total_cost']:,.2f}")
+
+                # Holdings table
+                import pandas as _pd
+                df_h = _pd.DataFrame(holdings)
+                display_cols = ["ticker", "shares", "buy_price", "current_price",
+                                "cost", "value", "pnl", "pnl_pct", "sector"]
+                existing_cols = [c for c in display_cols if c in df_h.columns]
+                st.dataframe(df_h[existing_cols], use_container_width=True, hide_index=True)
+
+                # Sector breakdown pie chart
+                sectors = pf.get("sector_breakdown", {})
+                if sectors:
+                    import plotly.graph_objects as go
+                    fig_pie = go.Figure(data=[go.Pie(
+                        labels=list(sectors.keys()),
+                        values=list(sectors.values()),
+                        hole=0.4,
+                    )])
+                    fig_pie.update_layout(
+                        title="Sektorová diverzifikace",
+                        height=350,
+                        paper_bgcolor='rgba(0,0,0,0)',
+                        font=dict(color="white"),
+                    )
+                    st.plotly_chart(fig_pie, use_container_width=True)
+            else:
+                st.info("Zatím nemáš žádné pozice v portfoliu. Přidej je výše ☝️")
+                st.caption("Portfolio vyžaduje Supabase tabulku 'portfolio' (user_id TEXT, ticker TEXT, shares FLOAT, buy_price FLOAT, buy_date DATE).")
+
     # Footer
     st.markdown("---")
-    st.caption(f"📊 Data: Yahoo Finance | {APP_NAME} v6.0 | Toto není investiční doporučení")
+    st.caption(f"📊 Data: Yahoo Finance | {APP_NAME} v10.0 | Toto není investiční doporučení")
 
 
 def display_welcome_screen():
     """Display welcome screen when no ticker is selected."""
-    st.title("Vítej v Stock Picker Pro v9.0! 🚀")
+    st.title("Vítej v Stock Picker Pro v10.0! 🚀")
     
     st.markdown("""
     ### Pokročilá kvantitativní analýza akcií
     
-    **🆕 Co je nového ve v9.0:**
-    - ✅ **Podpora kryptoměn** – BTC-USD, ETH-USD a další (speciální crypto mód)
-    - ✅ **Radar Chart** – vizuální přehled 7 dimenzí v jednom grafu (Scorecard, Insider, Technická...)
-    - ✅ **Net Debt/EBITDA** – intuitivnější metrika zadluženosti ("za X let splatí dluh")
-    - ✅ **Rule of 40** – klíčová metrika pro SaaS/tech firmy
-    - ✅ **FCF Margin** – lepší cross-company srovnání než FCF Yield
-    - ✅ **Dividend Safety Score** – 0–5 bodový rating udržitelnosti dividendy
-    - ✅ **Historické P/E** – srovnání aktuálního P/E s 5letým průměrem
-    - ✅ **Insider Ownership** – kolik % firmy drží sami insideři
-    - ✅ **Watchlist Snapshoty** – automatické ukládání ceny/skóre pro tracking v čase
-    - ✅ **Opravené bugy** – D/E threshold, Reverse DCF konzistence, Peer formatting, Sensitivity analýza
-
+    **🆕 Co je nového ve v10.0:**
+    - ✅ **Supabase integrace** – watchlist, memos, snapshoty a AI cache persistentně v cloudu
+    - ✅ **Live makro data (FRED)** – Fed Funds Rate, CPI, unemployment, GDP v reálném čase
+    - ✅ **Automatický news feed** – NewsAPI + Polygon.io s AI sentiment analýzou
+    - ✅ **Interaktivní candlestick chart** – OHLC, RSI, MACD, Bollinger Bands, MA50/200
+    - ✅ **Twelve Data fallback** – ověření tech. indikátorů z profesionálního zdroje
+    - ✅ **Enhanced AI Analyst** – Gemini s makro kontextem a news sentimentem
+    - ✅ **AI report cache** – Supabase cache (6h TTL) pro rychlejší opakované analýzy
+    - ✅ **Mini Stock Screener** – prohledej 50 US akcií s filtry (P/E, ROE, dividenda...)
+    - ✅ **Portfolio Tracker** – spravuj své pozice s P&L a sektorovou diverzifikací
+    - ✅ **Auto snapshoty** – metriky automaticky ukládány při každé analýze
+    
     **Jak začít:**
     1. ⬅️ Zadej ticker symbol v levém panelu (např. AAPL, BTC-USD, NVDA)
     2. Klikni na "🔍 Analyzovat"
-    3. Prohlédni si všechny taby s pokročilými analýzami
+    3. Prohlédni si všech 11 tabů s pokročilými analýzami
     
     """)
     
