@@ -37,6 +37,7 @@ import spp_macro
 import spp_news
 import spp_charts
 import spp_screener
+from spp_constants import METRIC_TOOLTIPS
 
 
 # Page config must be the first Streamlit command
@@ -714,10 +715,333 @@ def load_custom_css():
             border-radius: var(--radius-sm);
         }
 
+        /* ================================================================
+           23. LIGHT THEME OVERRIDE
+           ================================================================ */
+        [data-theme="light"] {
+            --bg-primary: #f5f6fa;
+            --bg-secondary: #ebedf3;
+            --bg-elevated: #ffffff;
+            --card-bg: rgba(0, 0, 0, 0.03);
+            --card-bg-hover: rgba(0, 0, 0, 0.06);
+            --card-border: rgba(0, 0, 0, 0.08);
+            --card-border-hover: rgba(0, 0, 0, 0.16);
+            --text-primary: #1a1d26;
+            --text-secondary: #5a6275;
+            --text-muted: #9098ad;
+            --shadow-card: 0 2px 12px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.06);
+            --shadow-elevated: 0 4px 20px rgba(0,0,0,0.12), 0 2px 4px rgba(0,0,0,0.08);
+            --shadow-glow-green: 0 0 12px rgba(0, 230, 138, 0.10);
+            --shadow-glow-violet: 0 0 12px rgba(139, 92, 246, 0.10);
+            --gradient-hero: linear-gradient(135deg, rgba(0,230,138,0.06) 0%, rgba(139,92,246,0.04) 100%);
+            --gradient-card: linear-gradient(180deg, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.01) 100%);
+            --gradient-sidebar: linear-gradient(180deg, #f0f1f5 0%, #e8eaf0 100%);
+        }
+        [data-theme="light"] .stApp {
+            background: var(--bg-primary) !important;
+            color: var(--text-primary) !important;
+        }
+        [data-theme="light"] section[data-testid="stSidebar"] {
+            background: var(--gradient-sidebar) !important;
+            border-right: 1px solid var(--card-border) !important;
+        }
+        [data-theme="light"] .stTabs [role="tab"] {
+            color: var(--text-secondary) !important;
+        }
+        [data-theme="light"] .stTabs [role="tab"][aria-selected="true"] {
+            color: var(--text-primary) !important;
+        }
+
+        /* ================================================================
+           24. MOBILE TAB RESPONSIVENESS
+           ================================================================ */
+        @media (max-width: 768px) {
+            .stTabs [role="tablist"] {
+                overflow-x: auto !important;
+                -webkit-overflow-scrolling: touch;
+                scrollbar-width: none;
+                -ms-overflow-style: none;
+                flex-wrap: nowrap !important;
+                gap: 2px !important;
+                padding-bottom: 4px !important;
+                mask-image: linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%);
+                -webkit-mask-image: linear-gradient(to right, transparent 0%, black 3%, black 97%, transparent 100%);
+            }
+            .stTabs [role="tablist"]::-webkit-scrollbar { display: none; }
+            .stTabs [role="tab"] {
+                padding: 6px 10px !important;
+                font-size: 0.78rem !important;
+                white-space: nowrap !important;
+                min-width: fit-content !important;
+            }
+        }
+
+        /* ================================================================
+           25. SKELETON / SHIMMER PLACEHOLDERS
+           ================================================================ */
+        .spp-skeleton {
+            background: var(--card-bg);
+            border-radius: var(--radius-md);
+            border: 1px solid var(--card-border);
+            padding: 20px;
+            margin-bottom: 12px;
+            position: relative;
+            overflow: hidden;
+        }
+        .spp-skeleton::after {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.05) 50%, transparent 100%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s ease-in-out infinite;
+        }
+        .spp-skeleton-line {
+            height: 14px;
+            background: rgba(255,255,255,0.06);
+            border-radius: 6px;
+            margin-bottom: 10px;
+        }
+        .spp-skeleton-line.short { width: 60%; }
+        .spp-skeleton-line.medium { width: 80%; }
+        .spp-skeleton-circle {
+            width: 48px; height: 48px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.06);
+            margin-bottom: 12px;
+        }
+
+        /* ================================================================
+           26. GLASS METRIC CARD
+           ================================================================ */
+        .glass-metric-card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-lg);
+            padding: 18px 20px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        .glass-metric-card:hover {
+            border-color: var(--card-border-hover);
+            box-shadow: var(--shadow-card);
+            transform: translateY(-2px);
+        }
+        .glass-metric-card .metric-label {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        .glass-metric-card .metric-value {
+            font-size: 1.6rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.2;
+        }
+        .glass-metric-card .metric-delta {
+            font-size: 0.82rem;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+        .glass-metric-card .metric-delta.positive { color: var(--accent-green); }
+        .glass-metric-card .metric-delta.negative { color: var(--accent-red); }
+        .glass-metric-card .metric-icon {
+            position: absolute;
+            top: 14px; right: 16px;
+            font-size: 1.4rem;
+            opacity: 0.35;
+        }
+
+        /* ================================================================
+           27. ERROR STATE CARD
+           ================================================================ */
+        .error-state-card {
+            background: var(--accent-red-dim);
+            border: 1px solid rgba(255,90,90,0.25);
+            border-radius: var(--radius-lg);
+            padding: 24px;
+            text-align: center;
+        }
+        .error-state-card .error-icon { font-size: 2rem; margin-bottom: 8px; }
+        .error-state-card .error-title {
+            font-size: 1rem; font-weight: 600; color: var(--accent-red); margin-bottom: 4px;
+        }
+        .error-state-card .error-msg {
+            font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;
+        }
+
+        /* ================================================================
+           28. TOAST NOTIFICATION
+           ================================================================ */
+        .spp-toast {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 99999;
+            padding: 14px 24px;
+            border-radius: var(--radius-md);
+            font-size: 0.88rem;
+            font-weight: 500;
+            animation: fadeInUp 0.4s ease, fadeOutDown 0.4s ease 2.6s forwards;
+            box-shadow: var(--shadow-elevated);
+            backdrop-filter: blur(12px);
+            pointer-events: none;
+        }
+        .spp-toast.success { background: rgba(0,230,138,0.15); border: 1px solid rgba(0,230,138,0.3); color: var(--accent-green); }
+        .spp-toast.error { background: rgba(255,90,90,0.15); border: 1px solid rgba(255,90,90,0.3); color: var(--accent-red); }
+        .spp-toast.info { background: rgba(59,158,255,0.15); border: 1px solid rgba(59,158,255,0.3); color: var(--accent-blue); }
+        @keyframes fadeOutDown {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-16px); }
+        }
+
+        /* ================================================================
+           29. COMPARISON VIEW
+           ================================================================ */
+        .comparison-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 24px;
+            margin-bottom: 24px;
+        }
+        .comparison-vs {
+            font-size: 1.2rem;
+            font-weight: 800;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
         </style>
     """, unsafe_allow_html=True)
 
 load_custom_css()
+
+# ─── UI HELPER FUNCTIONS ────────────────────────────────────────────────────
+
+def render_skeleton(rows: int = 3, show_circle: bool = False) -> None:
+    """Render a shimmer skeleton placeholder while data loads."""
+    lines_html = ""
+    if show_circle:
+        lines_html += '<div class="spp-skeleton-circle"></div>'
+    for i in range(rows):
+        cls = "short" if i % 3 == 0 else ("medium" if i % 3 == 1 else "")
+        lines_html += f'<div class="spp-skeleton-line {cls}"></div>'
+    st.markdown(f'<div class="spp-skeleton">{lines_html}</div>', unsafe_allow_html=True)
+
+
+def show_toast(message: str, toast_type: str = "success") -> None:
+    """Show a temporary toast notification (success/error/info)."""
+    valid = {"success", "error", "info"}
+    t = toast_type if toast_type in valid else "info"
+    st.markdown(
+        f'<div class="spp-toast {t}">{message}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def glass_metric(label: str, value: str, delta: str = "", icon: str = "",
+                 delta_positive: bool = True) -> None:
+    """Render a premium glass-blur metric card."""
+    delta_cls = "positive" if delta_positive else "negative"
+    delta_html = f'<div class="metric-delta {delta_cls}">{delta}</div>' if delta else ""
+    icon_html = f'<div class="metric-icon">{icon}</div>' if icon else ""
+    st.markdown(f"""
+        <div class="glass-metric-card">
+            {icon_html}
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{value}</div>
+            {delta_html}
+        </div>
+    """, unsafe_allow_html=True)
+
+
+def render_error_card(title: str, message: str, icon: str = "⚠️",
+                      retry_hint: str = "") -> None:
+    """Render a styled error state card."""
+    retry_html = (f'<div style="font-size:0.78rem;color:var(--text-muted);'
+                  f'margin-top:8px;">{retry_hint}</div>') if retry_hint else ""
+    st.markdown(f"""
+        <div class="error-state-card">
+            <div class="error-icon">{icon}</div>
+            <div class="error-title">{title}</div>
+            <div class="error-msg">{message}</div>
+            {retry_html}
+        </div>
+    """, unsafe_allow_html=True)
+
+
+def render_theme_toggle() -> None:
+    """Render dark/light mode toggle in sidebar using session state."""
+    if "spp_theme" not in st.session_state:
+        st.session_state["spp_theme"] = "dark"
+    current = st.session_state["spp_theme"]
+    label = "☀️ Light Mode" if current == "dark" else "🌙 Dark Mode"
+    if st.button(label, key="theme_toggle_btn", use_container_width=True):
+        st.session_state["spp_theme"] = "light" if current == "dark" else "dark"
+        st.rerun()
+    # Inject data-theme attribute via JS
+    theme = st.session_state["spp_theme"]
+    st.markdown(f"""
+        <script>
+        (function() {{
+            document.documentElement.setAttribute('data-theme', '{theme}');
+        }})();
+        </script>
+    """, unsafe_allow_html=True)
+
+
+def inject_keyboard_shortcuts() -> None:
+    """Inject global keyboard shortcuts (Ctrl+K = focus search)."""
+    st.markdown("""
+        <script>
+        document.addEventListener('keydown', function(e) {
+            // Ctrl+K or Cmd+K → focus ticker search
+            if ((e.ctrlKey || e.metaKey) && e.key === 'k') {
+                e.preventDefault();
+                var inputs = document.querySelectorAll('input[type="text"]');
+                if (inputs.length > 0) inputs[0].focus();
+            }
+        });
+        </script>
+    """, unsafe_allow_html=True)
+
+
+def render_comparison_view(ticker_a: str, ticker_b: str,
+                           data_a: dict, data_b: dict) -> None:
+    """Render a side-by-side stock comparison table."""
+    st.markdown(f"""
+        <div class="comparison-header">
+            <span style="font-size:1.3rem;font-weight:700;">{ticker_a}</span>
+            <span class="comparison-vs">VS</span>
+            <span style="font-size:1.3rem;font-weight:700;">{ticker_b}</span>
+        </div>
+    """, unsafe_allow_html=True)
+
+    metrics_to_compare = [
+        ("P/E", "P/E"), ("P/B", "P/B"), ("ROE", "ROE"), ("ROA", "ROA"),
+        ("Debt/Equity", "D/E"), ("Profit Margin", "Profit Margin"),
+        ("Revenue Growth", "Rev. Growth"), ("EPS Growth", "EPS Growth"),
+    ]
+    rows = []
+    for label, key in metrics_to_compare:
+        val_a = data_a.get(key, "N/A")
+        val_b = data_b.get(key, "N/A")
+        rows.append({"Metric": label, ticker_a: val_a, ticker_b: val_b})
+
+    if rows:
+        import pandas as pd
+        df = pd.DataFrame(rows)
+        st.dataframe(df, use_container_width=True, hide_index=True)
+
 
 def normalize_ticker(raw: str) -> str:
     """Normalizuje běžné aliasy a zápisy tickerů (bez web lookup)."""
@@ -1095,6 +1419,84 @@ try:
 except Exception:
     _HAS_PDF = False
 
+
+def generate_pdf_report(ticker: str, info: dict, metrics: dict) -> Optional[bytes]:
+    """Generate a PDF report for a stock analysis. Returns bytes or None."""
+    if not _HAS_PDF:
+        return None
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.pdfgen import canvas as pdf_canvas
+        from reportlab.lib.units import inch
+        import io
+
+        buf = io.BytesIO()
+        c = pdf_canvas.Canvas(buf, pagesize=letter)
+        width, height = letter
+        y = height - 1 * inch
+
+        # Header
+        c.setFont("Helvetica-Bold", 20)
+        c.drawString(1 * inch, y, f"Stock Picker Pro – {ticker}")
+        y -= 0.4 * inch
+        c.setFont("Helvetica", 10)
+        company = info.get("shortName") or info.get("longName") or ticker
+        sector = info.get("sector", "N/A")
+        c.drawString(1 * inch, y, f"{company} | Sector: {sector}")
+        y -= 0.5 * inch
+
+        # Key Metrics table
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(1 * inch, y, "Key Metrics")
+        y -= 0.3 * inch
+        c.setFont("Helvetica", 10)
+
+        metric_keys = [
+            ("Price", "currentPrice"), ("P/E", "trailingPE"),
+            ("P/B", "priceToBook"), ("EV/EBITDA", "enterpriseToEbitda"),
+            ("ROE", "returnOnEquity"), ("ROA", "returnOnAssets"),
+            ("Profit Margin", "profitMargins"), ("Debt/Equity", "debtToEquity"),
+            ("Revenue Growth", "revenueGrowth"), ("Dividend Yield", "dividendYield"),
+        ]
+        for label, key in metric_keys:
+            val = info.get(key) or metrics.get(key, "N/A")
+            if isinstance(val, float):
+                if key in ("returnOnEquity", "returnOnAssets", "profitMargins",
+                           "revenueGrowth", "dividendYield"):
+                    val = f"{val * 100:.2f}%"
+                else:
+                    val = f"{val:,.2f}"
+            c.drawString(1 * inch, y, f"{label}:")
+            c.drawString(3.5 * inch, y, str(val))
+            y -= 0.22 * inch
+            if y < 1 * inch:
+                c.showPage()
+                y = height - 1 * inch
+                c.setFont("Helvetica", 10)
+
+        # Custom metrics from analysis
+        if metrics:
+            y -= 0.3 * inch
+            c.setFont("Helvetica-Bold", 14)
+            c.drawString(1 * inch, y, "Analysis Scores")
+            y -= 0.3 * inch
+            c.setFont("Helvetica", 10)
+            score_keys = ["Piotroski", "Altman Z", "DCF", "MOS", "Graham Number"]
+            for sk in score_keys:
+                if sk in metrics:
+                    c.drawString(1 * inch, y, f"{sk}:")
+                    c.drawString(3.5 * inch, y, str(metrics[sk]))
+                    y -= 0.22 * inch
+
+        # Footer
+        c.setFont("Helvetica-Oblique", 8)
+        c.drawString(1 * inch, 0.5 * inch,
+                     "Generated by Stock Picker Pro · Not financial advice")
+        c.save()
+        return buf.getvalue()
+    except Exception:
+        return None
+
 # Constants
 APP_NAME = "Stock Picker Pro"
 APP_VERSION = "v9.0"
@@ -1103,54 +1505,7 @@ GEMINI_MODEL = "gemini-2.5-flash-lite"  # Optimized for Free Tier
 MAX_AI_RETRIES = 3  # Retry logic for rate limits
 RETRY_DELAY = 2  # seconds
 
-# ============================================================================
-# TOOLTIP VYSVĚTLIVKY PRO METRIKY
-# ============================================================================
-METRIC_TOOLTIPS: Dict[str, str] = {
-    # Valuace
-    "P/E":          "Price-to-Earnings: cena akcie děleno zisk na akcii (EPS). Říká, kolik korun platíš za 1 Kč zisku. P/E < 15 = levné, > 30 = drahé. Závisí hodně na sektoru.",
-    "P/B":          "Price-to-Book: cena / účetní hodnota na akcii. P/B < 1 = firma se obchoduje pod hodnotou svého majetku. Skvělé pro banky a výrobní firmy.",
-    "P/S":          "Price-to-Sales: cena / tržby na akcii. Užitečné pro firmy bez zisku (startupy, SaaS). P/S < 2 = levné, > 10 = drahé (závisí na sektoru).",
-    "PEG":          "PEG Ratio = P/E ÷ roční růst EPS (v %). Zohledňuje růst. PEG < 1 = potenciálně podhodnoceno, > 2 = drahé vzhledem k růstu. (Lynch: PEG 1 = férová cena)",
-    "EV/EBITDA":    "Enterprise Value / EBITDA: celková hodnota firmy (tržní cap + dluh - cash) děleno provozní zisk před odpisy. Lepší než P/E pro porovnání firem s různými dluhovou strukturou. < 10 = levné.",
-    "DCF":          "Discounted Cash Flow: model, který diskontuje budoucí free cash flow na současnou hodnotu. Výsledkem je 'férová cena' akcie. Velmi citlivé na předpoklady (WACC, growth rate).",
-    "MOS":          "Margin of Safety: jak velký je 'polštář' mezi férovou cenou (DCF) a aktuální tržní cenou. MOS > 0 = cena je pod férovkou (příležitost), MOS < 0 = cena je nad férovkou.",
-    "Graham Number":"Konzervativní fair value podle Benjamina Grahama = √(22,5 × EPS × Účetní hodnota/akcii). Dobré jako dolní mez valuace. Pokud cena < Graham Number = potenciálně levné.",
-    # Rentabilita
-    "ROE":          "Return on Equity: čistý zisk / vlastní kapitál. Jak efektivně firma zhodnocuje kapitál akcionářů. ROE > 15 % = skvělé, > 30 % = výjimečné (Buffett benchmark).",
-    "ROA":          "Return on Assets: čistý zisk / celková aktiva. Jak efektivně firma využívá veškerý majetek. ROA > 5 % = dobré, závisí na kapitálové náročnosti sektoru.",
-    "ROIC":         "Return on Invested Capital: NOPAT (zisk po daních) / (vlastní kapitál + dluh). Nejlepší ukazatel ekonomické eficiency. ROIC > WACC = firma vytváří hodnotu pro akcionáře.",
-    "Op. Margin":   "Provozní marže: provozní zisk / tržby. Kolik % z každé koruny tržeb zbyde po zaplacení nákladů (bez daní a úroků). > 15 % = zdravé, > 30 % = silný byznys model.",
-    "Profit Margin":"Čistá marže: čistý zisk / tržby. Kolik % z tržeb je skutečný zisk po všech nákladech, daních a úrocích. > 10 % = dobré.",
-    "Gross Margin": "Hrubá marže: (tržby - COGS) / tržby. Kolik zbyde před provozními náklady. Vysoká hrubá marže (> 50 %) naznačuje silný brand nebo moat (technologie, SW).",
-    # Růst
-    "Rev. Growth":  "Meziroční růst tržeb. > 10 % = solidní, > 20 % = rychlý růst. Záporný = varování. Pozor: high growth + nízká marže = riziková kombinace.",
-    "EPS Growth":   "Meziroční růst zisku na akcii (EPS). Důležitější než růst tržeb – říká, jestli firma roste ziskově. > 10 % = dobré, > 20 % = výborné.",
-    # Finanční zdraví
-    "Current Ratio":"Current Ratio = oběžná aktiva / krátkodobé závazky. Schopnost splácet krátkodobé dluhy. > 1,5 = zdravé, < 1 = možné problémy s likviditou.",
-    "Quick Ratio":  "Quick Ratio = (oběžná aktiva - zásoby) / krátkodobé závazky. Konzervativnější verze Current Ratio (bez zásob, které se hůř prodávají). > 1 = zdravé.",
-    "D/E":          "Debt-to-Equity: celkový dluh / vlastní kapitál. Finanční páka. D/E > 2 = vysoká zadluženost (riziko). D/E < 0,5 = konzervativní. Liší se hodně podle sektoru (utilities mají typicky vysoké D/E).",
-    "Debt/Equity":  "Debt-to-Equity: celkový dluh / vlastní kapitál. Finanční páka. D/E > 2 = vysoká zadluženost (riziko). D/E < 0,5 = konzervativní. Liší se hodně podle sektoru.",
-    "FCF Yield":    "Free Cash Flow Yield = FCF / tržní kapitalizace. Kolik % z tržní hodnoty firmy generuje v hotovosti. > 5 % = atraktivní. Přesnější než dividend yield pro ocenění firmy.",
-    # Technická
-    "RSI":          "Relative Strength Index (0–100): měří rychlost a změnu cenových pohybů. RSI > 70 = překoupeno (možný obrat dolů), RSI < 30 = přeprodáno (možný obrat nahoru). Neutrální: 40–60.",
-    "MACD":         "Moving Average Convergence Divergence: rozdíl EMA12 a EMA26. Když MACD překříží signální linii zdola = bullish signál. Shora = bearish. Lagging indikátor (reaguje se zpožděním).",
-    "MA50/MA200":   "Klouzavé průměry za 50 a 200 dní. Golden Cross (MA50 > MA200) = bullish trend. Death Cross (MA50 < MA200) = bearish trend. Cena nad MA200 = long-term uptrend.",
-    "BB":           "Bollinger Bands: střední pásmo (MA20) ± 2× směrodatná odchylka. Cena u horního pásma = překoupeno, u dolního = přeprodáno. 'Squeeze' (pásma blízko) = čeká se velký pohyb.",
-    # Riziko
-    "Piotroski":    "Piotroski F-Score (0–9): 9-bodový test fundamentální kvality (ziskovost, likvidita, efektivita). 8–9 = silná firma, 0–2 = slabá. Dobrý filtr pro value investing.",
-    "Altman Z":     "Altman Z-Score: model predikce bankrotu. Z > 2,99 = bezpečná zóna, 1,81–2,99 = šedá zóna, < 1,81 = riziko bankrotu. Pro průmyslové firmy (ne banky/pojišťovny).",
-    "Short Int.":   "Short Interest: % akcií v oběhu, které jsou vypůjčeny a prodány na krátko. > 10 % = vysoký short zájem (spekulanti sázejí na pokles). Může být bullish trigger (short squeeze).",
-    "Earnings Q.":  "Earnings Quality (CFO / Net Income): poměr provozního cash flow k čistému zisku. < 0,8 = zisk může být 'papírový' (accruals, účetní triky). > 1,1 = vynikající – firma vydělává více v cash než reportuje.",
-    # Insider
-    "Insider Sig.": "Insider Trading Signal: vážený součet nákupů a prodejů insiderů (CEO, CFO, ředitelé) za posledních 6 měsíců. Zohledňuje roli (CEO = 3×) a hodnotu transakce. +100 = silný bullish signál.",
-    # DCF pokročilé
-    "WACC":         "Weighted Average Cost of Capital: vážené průměrné náklady kapitálu. Diskontní sazba v DCF modelu. Čím vyšší WACC, tím nižší fair value. Zahrnuje cenu dluhu i vlastního kapitálu (CAPM).",
-    "Terminal Growth":"Terminální růst: předpokládaný věčný růst FCF po skončení projekčního období. Typicky 2–3 % (≈ inflace/GDP). Velmi citlivý parametr – malá změna = velký dopad na fair value.",
-    "Implied Growth":"Reverse DCF: jaký růst FCF trh aktuálně 'očekává' při aktuální ceně akcie. Pokud je implied growth vyšší než realistický, akcie je pravděpodobně předražená.",
-    # Monte Carlo
-    "P10/P90":      "Percentily Monte Carlo simulace: P10 = pesimistický scénář (jen 10 % simulací dopadlo hůře), P90 = optimistický (jen 10 % dopadlo lépe). Medián je robustnější střed než průměr.",
-}
+# METRIC_TOOLTIPS imported from spp_constants (single source of truth)
 
 def metric_help(key: str) -> Optional[str]:
     """Vrátí tooltip text pro danou metriku nebo None."""
@@ -1831,22 +2186,7 @@ def detect_market_regime(price_history: pd.DataFrame) -> str:
     if vol < 0.18 and avg_ret > 0.05: return "Low Volatility / Bull"
     return "Stable / Transition"
     
-def ensure_data_dir() -> None:
-    os.makedirs(DATA_DIR, exist_ok=True)
-
-
-def load_json(path: str, default: Any) -> Any:
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return default
-
-
-def save_json(path: str, obj: Any) -> None:
-    ensure_data_dir()
-    with open(path, "w", encoding="utf-8") as f:
-        json.dump(obj, f, ensure_ascii=False, indent=2)
+# JSON helpers removed – use spp_database module instead (db._load_json / db._save_json)
 
 
 def safe_float(x: Any) -> Optional[float]:
@@ -4764,6 +5104,11 @@ def main():
                 pass
             diag_log("Cache cleared by user", "INFO")
             st.rerun()
+
+        # Theme toggle (dark/light)
+        render_theme_toggle()
+        # Global keyboard shortcuts (Ctrl+K = search)
+        inject_keyboard_shortcuts()
 
         render_diagnostics_panel()
         st.markdown("---")
