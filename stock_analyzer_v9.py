@@ -53,223 +53,665 @@ st.set_page_config(
 # =============================================================================
 
 def load_custom_css():
+    """Premium Design System v10.0 – Modern dark UI with glassmorphism, animations, and responsive layout."""
     st.markdown("""
         <style>
-        /* 1. IMPORTS & VARS */
-        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;900&display=swap');
-        
+        /* ================================================================
+           1. IMPORTS & DESIGN TOKENS
+           ================================================================ */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+        @import url('https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,400,0,0&display=swap');
+
         :root {
-            --bg-color: #000000;
-            --card-bg: rgba(255, 255, 255, 0.05);
-            --card-border: 1px solid rgba(255, 255, 255, 0.1);
-            --text-primary: #ffffff;
-            --text-secondary: #a0a0a0;
-            --accent-green: #00ff88;
-            --accent-red: #ff4444;
-            --accent-blue: #29b5e8;
-            --font-main: 'Inter', sans-serif;
+            /* Surface colors */
+            --bg-primary: #06080d;
+            --bg-secondary: #0c0f17;
+            --bg-elevated: #111520;
+            --card-bg: rgba(255, 255, 255, 0.035);
+            --card-bg-hover: rgba(255, 255, 255, 0.06);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-border-hover: rgba(255, 255, 255, 0.18);
+
+            /* Text colors */
+            --text-primary: #f0f2f5;
+            --text-secondary: #8b92a5;
+            --text-muted: #555d70;
+
+            /* Accent palette */
+            --accent-green: #00e68a;
+            --accent-green-dim: rgba(0, 230, 138, 0.12);
+            --accent-red: #ff5a5a;
+            --accent-red-dim: rgba(255, 90, 90, 0.12);
+            --accent-blue: #3b9eff;
+            --accent-blue-dim: rgba(59, 158, 255, 0.12);
+            --accent-violet: #8b5cf6;
+            --accent-violet-dim: rgba(139, 92, 246, 0.12);
+            --accent-amber: #f59e0b;
+            --accent-amber-dim: rgba(245, 158, 11, 0.12);
+
+            /* Gradients */
+            --gradient-primary: linear-gradient(135deg, #00e68a 0%, #00b4d8 100%);
+            --gradient-hero: linear-gradient(135deg, rgba(0,230,138,0.08) 0%, rgba(139,92,246,0.06) 100%);
+            --gradient-card: linear-gradient(180deg, rgba(255,255,255,0.05) 0%, rgba(255,255,255,0.02) 100%);
+            --gradient-sidebar: linear-gradient(180deg, #08090e 0%, #0a0c14 100%);
+
+            /* Spacing & Radius */
+            --radius-sm: 8px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --radius-xl: 20px;
+            --space-xs: 4px;
+            --space-sm: 8px;
+            --space-md: 16px;
+            --space-lg: 24px;
+            --space-xl: 32px;
+
+            /* Shadows */
+            --shadow-card: 0 4px 24px rgba(0, 0, 0, 0.25), 0 1px 2px rgba(0, 0, 0, 0.2);
+            --shadow-elevated: 0 8px 40px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
+            --shadow-glow-green: 0 0 20px rgba(0, 230, 138, 0.15);
+            --shadow-glow-violet: 0 0 20px rgba(139, 92, 246, 0.15);
+
+            /* Typography */
+            --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
         }
 
-        /* 2. GLOBAL RESET */
+        /* ================================================================
+           2. KEYFRAME ANIMATIONS
+           ================================================================ */
+        @keyframes fadeInUp {
+            from { opacity: 0; transform: translateY(16px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        @keyframes shimmer {
+            0% { background-position: -200% 0; }
+            100% { background-position: 200% 0; }
+        }
+        @keyframes pulseGlow {
+            0%, 100% { box-shadow: 0 0 4px rgba(0, 230, 138, 0.2); }
+            50% { box-shadow: 0 0 16px rgba(0, 230, 138, 0.35); }
+        }
+        @keyframes slideInLeft {
+            from { opacity: 0; transform: translateX(-12px); }
+            to { opacity: 1; transform: translateX(0); }
+        }
+        @keyframes scaleIn {
+            from { opacity: 0; transform: scale(0.92); }
+            to { opacity: 1; transform: scale(1); }
+        }
+        @keyframes gradientShift {
+            0% { background-position: 0% 50%; }
+            50% { background-position: 100% 50%; }
+            100% { background-position: 0% 50%; }
+        }
+
+        /* ================================================================
+           3. GLOBAL RESET & BASE
+           ================================================================ */
         .stApp {
-            background-color: var(--bg-color);
-            font-family: var(--font-main);
-        }
-        
-        h1, h2, h3, h4, h5, h6, p, label, button, input, textarea {
+            background: var(--bg-primary) !important;
             font-family: var(--font-main) !important;
-        }
-
-        /* 3. LAYOUT & CONTAINERS */
-        .block-container {
-            max-width: 95% !important;
-            padding-top: 2rem;
-            padding-bottom: 5rem;
-        }
-        
-        /* Remove top padding emptiness */
-        div[data-testid="stHeader"] {
-            background-color: transparent;
-        }
-
-        /* 4. CUSTOM COMPONENTS */
-        
-        /* Glassmorphism Card (Utility Class) */
-        .glass-card {
-            background: var(--card-bg);
-            backdrop-filter: blur(12px);
-            -webkit-backdrop-filter: blur(12px);
-            border: var(--card-border);
-            border-radius: 12px;
-            padding: 20px;
-            margin-bottom: 20px;
-            transition: transform 0.2s ease, border-color 0.2s ease;
-        }
-        .glass-card:hover {
-            border-color: rgba(255, 255, 255, 0.3);
-            transform: translateY(-2px);
-        }
-
-        /* Metrics inside cards */
-        .metric-label {
-            font-size: 0.85rem;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            color: var(--text-secondary);
-            margin-bottom: 5px;
-        }
-        .metric-value {
-            font-size: 1.8rem;
-            font-weight: 700;
             color: var(--text-primary);
         }
-        .metric-delta {
-            font-size: 1rem;
-            font-weight: 600;
-            margin-top: 5px;
+
+        h1, h2, h3, h4, h5, h6, p, label, button, input, textarea, div {
+            font-family: var(--font-main) !important;
         }
+        /* Preserve Streamlit / Material icon fonts */
+        span[data-testid] *,
+        [data-baseweb] [role="presentation"],
+        .material-symbols-outlined,
+        .e1nzilvr5,
+        [class*="Icon"] {
+            font-family: inherit !important;
+        }
+
+        h1 { font-weight: 800 !important; letter-spacing: -0.02em; }
+        h2 { font-weight: 700 !important; letter-spacing: -0.01em; }
+        h3 { font-weight: 600 !important; }
+
+        a { color: var(--accent-blue); transition: color 0.2s ease; }
+        a:hover { color: var(--accent-green); }
+
+        /* ================================================================
+           4. LAYOUT & CONTAINERS
+           ================================================================ */
+        .block-container {
+            max-width: 96% !important;
+            padding-top: 1.5rem !important;
+            padding-bottom: 4rem !important;
+        }
+
+        div[data-testid="stHeader"] {
+            background-color: transparent !important;
+        }
+
+        /* Main content area */
+        .main .block-container {
+            animation: fadeInUp 0.4s ease-out;
+        }
+
+        /* ================================================================
+           5. GLASSMORPHISM CARDS
+           ================================================================ */
+        .glass-card {
+            background: var(--gradient-card);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 20px;
+            margin-bottom: 16px;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-card);
+            animation: fadeInUp 0.5s ease-out both;
+        }
+        .glass-card:hover {
+            border-color: var(--card-border-hover);
+            transform: translateY(-3px);
+            box-shadow: var(--shadow-elevated);
+            background: var(--card-bg-hover);
+        }
+
+        /* Stat cards for header metrics */
+        .stat-card {
+            background: var(--gradient-card);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 18px 20px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            box-shadow: var(--shadow-card);
+        }
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0; left: 0; right: 0;
+            height: 2px;
+            background: var(--gradient-primary);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+        .stat-card:hover {
+            border-color: var(--card-border-hover);
+            transform: translateY(-2px);
+        }
+        .stat-card:hover::before { opacity: 1; }
+
+        /* Metric card layout */
+        .metric-card {
+            background: var(--gradient-card);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 16px 20px;
+            margin-bottom: 12px;
+            transition: all 0.25s ease;
+        }
+        .metric-card:hover {
+            border-color: var(--card-border-hover);
+        }
+
+        /* ================================================================
+           6. TYPOGRAPHY COMPONENTS
+           ================================================================ */
+        .metric-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 1.2px;
+            color: var(--text-muted);
+            margin-bottom: 6px;
+        }
+        .metric-value {
+            font-size: clamp(1.4rem, 4vw, 2rem);
+            font-weight: 800;
+            color: var(--text-primary);
+            line-height: 1.2;
+        }
+        .metric-delta {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-top: 4px;
+        }
+
         .text-green { color: var(--accent-green) !important; }
         .text-red { color: var(--accent-red) !important; }
         .text-blue { color: var(--accent-blue) !important; }
+        .text-violet { color: var(--accent-violet) !important; }
+        .text-amber { color: var(--accent-amber) !important; }
+        .text-muted { color: var(--text-muted) !important; }
 
-        /* 5. STREAMLIT WIDGET OVERRIDES */
-        
-        /* Sidebar */
+        /* Section header with gradient underline */
+        .section-header {
+            font-size: 1.5rem;
+            font-weight: 700;
+            margin: 24px 0 14px 0;
+            padding-bottom: 12px;
+            border-bottom: 2px solid transparent;
+            border-image: var(--gradient-primary) 1;
+            animation: fadeInUp 0.4s ease-out both;
+        }
+
+        /* ================================================================
+           7. BADGES & PILLS
+           ================================================================ */
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            padding: 4px 12px;
+            border-radius: 100px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+            white-space: nowrap;
+        }
+        .badge-green { background: var(--accent-green-dim); color: var(--accent-green); border: 1px solid rgba(0,230,138,0.2); }
+        .badge-red { background: var(--accent-red-dim); color: var(--accent-red); border: 1px solid rgba(255,90,90,0.2); }
+        .badge-blue { background: var(--accent-blue-dim); color: var(--accent-blue); border: 1px solid rgba(59,158,255,0.2); }
+        .badge-violet { background: var(--accent-violet-dim); color: var(--accent-violet); border: 1px solid rgba(139,92,246,0.2); }
+        .badge-amber { background: var(--accent-amber-dim); color: var(--accent-amber); border: 1px solid rgba(245,158,11,0.2); }
+
+        /* ================================================================
+           8. ALERT BOXES
+           ================================================================ */
+        .warning-box {
+            background: var(--accent-red-dim);
+            border-left: 3px solid var(--accent-red);
+            padding: 14px 18px;
+            border-radius: var(--radius-sm);
+            color: #ffc9c9;
+            margin-bottom: 12px;
+            animation: slideInLeft 0.3s ease-out;
+        }
+        .success-box {
+            background: var(--accent-green-dim);
+            border-left: 3px solid var(--accent-green);
+            padding: 14px 18px;
+            border-radius: var(--radius-sm);
+            color: #c8ffe0;
+            margin-bottom: 12px;
+            animation: slideInLeft 0.3s ease-out;
+        }
+        .info-box {
+            background: var(--accent-blue-dim);
+            border-left: 3px solid var(--accent-blue);
+            padding: 14px 18px;
+            border-radius: var(--radius-sm);
+            color: #c0e0ff;
+            margin-bottom: 12px;
+            animation: slideInLeft 0.3s ease-out;
+        }
+
+        /* ================================================================
+           8b. MATERIAL ICON FIX
+           ================================================================ */
+        /* Force Material Symbols font for Streamlit icon elements */
+
+        /* Collapse / expand sidebar button and toolbar icons */
+        [data-testid="stSidebarCollapsedControl"] span,
+        [data-testid="collapsedControl"] span,
+        button[kind="header"] span,
+        [data-testid="stHeader"] span,
+        [data-testid="stToolbar"] span,
+        .stDeployButton span,
+        details summary span[class] {
+            font-family: 'Material Symbols Outlined', sans-serif !important;
+            font-size: 24px !important;
+            -webkit-font-feature-settings: 'liga' 1;
+            font-feature-settings: 'liga' 1;
+        }
+
+        /* ================================================================
+           9. SIDEBAR
+           ================================================================ */
         [data-testid="stSidebar"] {
-            background-color: #050505;
-            border-right: 1px solid #222;
+            background: var(--gradient-sidebar) !important;
+            border-right: 1px solid rgba(255,255,255,0.06) !important;
         }
-        
-        /* Tabs */
+        section[data-testid="stSidebar"] hr {
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent) !important;
+            margin: 1.5rem 0 !important;
+            border: none !important;
+            height: 1px !important;
+        }
+
+        /* ================================================================
+           10. TABS
+           ================================================================ */
         .stTabs [data-baseweb="tab-list"] {
-            gap: 8px;
-            border-bottom: 1px solid #333;
-            padding-bottom: 5px;
+            gap: 4px;
+            border-bottom: 1px solid rgba(255,255,255,0.08);
+            padding-bottom: 0;
+            background: transparent;
+            overflow-x: auto;
+            scrollbar-width: none;
         }
+        .stTabs [data-baseweb="tab-list"]::-webkit-scrollbar { display: none; }
+
         .stTabs [data-baseweb="tab"] {
             background-color: transparent;
-            border-radius: 4px;
+            border-radius: var(--radius-sm) var(--radius-sm) 0 0;
             color: var(--text-secondary);
-            font-weight: 600;
-            padding: 4px 16px;
+            font-weight: 500;
+            font-size: 0.85rem;
+            padding: 8px 16px;
+            transition: all 0.25s ease;
+            border-bottom: 2px solid transparent;
+            white-space: nowrap;
+        }
+        .stTabs [data-baseweb="tab"]:hover {
+            color: var(--text-primary);
+            background: rgba(255,255,255,0.04);
         }
         .stTabs [aria-selected="true"] {
-            background-color: rgba(255, 255, 255, 0.1) !important;
+            background-color: rgba(0, 230, 138, 0.06) !important;
             color: var(--accent-green) !important;
-            border-bottom: 2px solid var(--accent-green);
-        }
-
-        /* Inputs */
-        .stTextInput input, .stSelectbox div[data-baseweb="select"] > div {
-            background-color: #111 !important;
-            color: white !important;
-            border: 1px solid #333 !important;
-            border-radius: 8px;
-        }
-        
-        /* Dataframes */
-        [data-testid="stDataFrame"] {
-            border: 1px solid #333;
-            border-radius: 8px;
-        }
-
-        /* Buttons */
-        div.stButton > button {
-            background: linear-gradient(45deg, #111, #222);
-            color: white;
-            border: 1px solid #444;
-            border-radius: 8px;
+            border-bottom: 2px solid var(--accent-green) !important;
             font-weight: 600;
-            transition: all 0.3s;
+        }
+
+        /* ================================================================
+           11. FORM ELEMENTS
+           ================================================================ */
+        .stTextInput input, .stNumberInput input {
+            background-color: var(--bg-elevated) !important;
+            color: var(--text-primary) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            border-radius: var(--radius-sm) !important;
+            transition: all 0.25s ease !important;
+            font-size: 0.9rem !important;
+        }
+        .stSelectbox div[data-baseweb="select"] > div {
+            background-color: var(--bg-elevated) !important;
+            color: var(--text-primary) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            border-radius: var(--radius-sm) !important;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            border-color: var(--accent-green) !important;
+            box-shadow: 0 0 0 2px rgba(0, 230, 138, 0.12) !important;
+            transition: all 0.25s ease !important;
+        }
+
+        /* ================================================================
+           12. BUTTONS
+           ================================================================ */
+        div.stButton > button {
+            background: linear-gradient(135deg, rgba(255,255,255,0.06), rgba(255,255,255,0.03));
+            color: var(--text-primary);
+            border: 1px solid rgba(255,255,255,0.12);
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            font-size: 0.88rem;
+            padding: 0.5rem 1.2rem;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            min-height: 44px;
         }
         div.stButton > button:hover {
             border-color: var(--accent-green);
             color: var(--accent-green);
+            background: rgba(0, 230, 138, 0.06);
+            transform: translateY(-1px);
+            box-shadow: var(--shadow-glow-green);
         }
-        div.stButton > button[kind="primary"] {
-            background: linear-gradient(90deg, #00ff88, #00cc6a);
-            color: black;
+        div.stButton > button[kind="primary"],
+        div.stButton > button:has([data-testid="stBaseButton-primary"]) {
+            background: linear-gradient(135deg, #00e68a 0%, #00b4d8 100%);
+            color: #06080d;
             border: none;
+            font-weight: 700;
+        }
+        div.stButton > button[kind="primary"]:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 20px rgba(0, 230, 138, 0.3);
+            color: #06080d;
         }
 
-        /* Warning/Info boxes */
-        .warning-box {
-            background: rgba(255, 68, 68, 0.1);
-            border-left: 4px solid var(--accent-red);
-            padding: 10px 15px;
-            border-radius: 4px;
-            color: #ffcccc;
-            margin-bottom: 10px;
-        }
-        .success-box {
-            background: rgba(0, 255, 136, 0.1);
-            border-left: 4px solid var(--accent-green);
-            padding: 10px 15px;
-            border-radius: 4px;
-            color: #ccffdd;
-            margin-bottom: 10px;
-        }
-        .info-box {
-            background: rgba(41, 181, 232, 0.1);
-            border-left: 4px solid var(--accent-blue);
-            padding: 10px 15px;
-            border-radius: 4px;
-            color: #cceeff;
-            margin-bottom: 10px;
+        /* ================================================================
+           13. DATA TABLES
+           ================================================================ */
+        [data-testid="stDataFrame"] {
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: var(--radius-sm) !important;
+            overflow: hidden;
         }
 
-        /* ----------------------------------------------------------- */
-        /* 6. ADVANCED POLISH (Phase 7 - Senior Frontend Details) */
-        /* ----------------------------------------------------------- */
-        
-        /* Custom Scrollbars (Webkit) */
-        ::-webkit-scrollbar {
-            width: 6px;
-            height: 6px;
+        /* ================================================================
+           14. EXPANDERS
+           ================================================================ */
+        .streamlit-expanderHeader {
+            font-weight: 600 !important;
+            font-size: 0.95rem !important;
+            color: var(--text-primary) !important;
         }
-        ::-webkit-scrollbar-track {
-            background: #000000; 
+        details {
+            border: 1px solid rgba(255,255,255,0.08) !important;
+            border-radius: var(--radius-sm) !important;
+            background: rgba(255,255,255,0.02) !important;
         }
+
+        /* ================================================================
+           15. METRICS (st.metric override)
+           ================================================================ */
+        [data-testid="stMetricValue"] {
+            font-size: clamp(1.2rem, 3.5vw, 1.8rem) !important;
+            font-weight: 800 !important;
+            color: var(--text-primary) !important;
+        }
+        [data-testid="stMetricLabel"] {
+            font-size: 0.78rem !important;
+            font-weight: 600 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 0.8px !important;
+            color: var(--text-muted) !important;
+        }
+        [data-testid="stMetricDelta"] > div {
+            font-weight: 600 !important;
+        }
+
+        /* ================================================================
+           16. TOAST NOTIFICATIONS
+           ================================================================ */
+        div[data-testid="stToast"] {
+            background: rgba(12, 15, 23, 0.96) !important;
+            border: 1px solid rgba(255,255,255,0.1) !important;
+            border-left: 3px solid var(--accent-green) !important;
+            color: var(--text-primary) !important;
+            border-radius: var(--radius-sm) !important;
+            backdrop-filter: blur(20px);
+            box-shadow: var(--shadow-elevated);
+        }
+
+        /* ================================================================
+           17. SCROLLBARS
+           ================================================================ */
+        ::-webkit-scrollbar { width: 5px; height: 5px; }
+        ::-webkit-scrollbar-track { background: transparent; }
         ::-webkit-scrollbar-thumb {
-            background: #333; 
-            border-radius: 3px;
+            background: rgba(255,255,255,0.15);
+            border-radius: 10px;
         }
         ::-webkit-scrollbar-thumb:hover {
-            background: var(--accent-green); 
+            background: var(--accent-green);
+        }
+        * { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,0.15) transparent; }
+
+        /* ================================================================
+           18. HERO / WELCOME COMPONENTS
+           ================================================================ */
+        .hero-container {
+            background: var(--gradient-hero);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-xl);
+            padding: 48px 40px;
+            margin-bottom: 32px;
+            position: relative;
+            overflow: hidden;
+            animation: scaleIn 0.5s ease-out;
+        }
+        .hero-container::after {
+            content: '';
+            position: absolute;
+            top: -50%; right: -50%;
+            width: 100%; height: 100%;
+            background: radial-gradient(circle, rgba(139,92,246,0.05) 0%, transparent 60%);
+            pointer-events: none;
+        }
+        .hero-title {
+            font-size: clamp(2rem, 5vw, 3.2rem);
+            font-weight: 900;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 12px;
+            line-height: 1.15;
+        }
+        .hero-subtitle {
+            font-size: 1.1rem;
+            color: var(--text-secondary);
+            line-height: 1.6;
+            max-width: 640px;
         }
 
-        /* Professional Data Tables (Bloomberg Style) */
-        [data-testid="stDataFrame"] {
-            border: 1px solid #222 !important;
-            border-radius: 0px !important;
-        }
-        [data-testid="stDataFrame"] div[data-testid="stVerticalBlock"] {
-             gap: 0 !important;
-        }
-        
-        /* Neon Focus States & Glows */
-        input:focus, textarea:focus, select:focus {
-            border-color: var(--accent-green) !important;
-            box-shadow: 0 0 8px rgba(0, 255, 136, 0.15) !important;
+        /* Feature cards for welcome screen */
+        .feature-card {
+            background: var(--gradient-card);
+            border: 1px solid var(--card-border);
+            border-radius: var(--radius-md);
+            padding: 20px;
             transition: all 0.3s ease;
+            cursor: default;
         }
-        
-        /* Sidebar Polish */
-        section[data-testid="stSidebar"] hr {
-            background-color: #222 !important;
-            margin: 2rem 0 !important;
+        .feature-card:hover {
+            border-color: var(--card-border-hover);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-card);
+        }
+        .feature-icon {
+            font-size: 1.8rem;
+            margin-bottom: 10px;
+            display: block;
+        }
+        .feature-title {
+            font-size: 0.95rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+        .feature-desc {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+            line-height: 1.4;
+        }
+
+        /* Ticker button for welcome screen */
+        .ticker-btn {
+            background: rgba(255,255,255,0.04);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: var(--radius-sm);
+            padding: 10px 16px;
+            text-align: center;
+            transition: all 0.25s ease;
+            cursor: pointer;
+        }
+        .ticker-btn:hover {
+            background: rgba(0, 230, 138, 0.08);
+            border-color: rgba(0, 230, 138, 0.3);
+            transform: translateY(-1px);
+        }
+
+        /* ================================================================
+           19. SCORE RING
+           ================================================================ */
+        .score-ring {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 80px; height: 80px;
+            border-radius: 50%;
+            font-size: 1.6rem;
+            font-weight: 900;
+            position: relative;
+        }
+        .score-ring::before {
+            content: '';
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 3px solid rgba(255,255,255,0.08);
+        }
+
+        /* ================================================================
+           20. RESPONSIVE DESIGN
+           ================================================================ */
+        @media (max-width: 768px) {
+            .block-container {
+                padding-left: 1rem !important;
+                padding-right: 1rem !important;
+            }
+            .glass-card, .stat-card, .metric-card {
+                padding: 14px 16px;
+            }
+            .hero-container {
+                padding: 28px 20px;
+            }
+            .hero-title {
+                font-size: 1.8rem;
+            }
+            section[data-testid="stSidebar"] {
+                background: rgba(8, 9, 14, 0.98) !important;
+                backdrop-filter: none !important;
+            }
+            section[data-testid="stSidebar"] * {
+                color: var(--text-primary);
+            }
+            .stTabs [data-baseweb="tab"] {
+                font-size: 0.78rem;
+                padding: 6px 10px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .metric-value {
+                font-size: 1.3rem;
+            }
+            .section-header {
+                font-size: 1.2rem;
+            }
+        }
+
+        /* ================================================================
+           21. LOADING / SKELETON SHIMMER
+           ================================================================ */
+        .shimmer {
+            background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,0.04) 50%, transparent 100%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s ease-in-out infinite;
+        }
+
+        /* ================================================================
+           22. MISC POLISH
+           ================================================================ */
+        /* Divider override */
+        hr {
             border: none !important;
             height: 1px !important;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.08), transparent) !important;
+            margin: 1.5rem 0 !important;
         }
-        
-        /* Toast Notification Polish */
-        div[data-testid="stToast"] {
-            background-color: rgba(10, 10, 10, 0.95) !important;
-            border: 1px solid #333 !important;
-            border-left: 4px solid var(--accent-green) !important;
-            color: white !important;
-            border-radius: 8px !important;
-            backdrop-filter: blur(10px);
+
+        /* Smooth transitions on all interactive elements */
+        button, input, select, textarea, a, details {
+            transition: all 0.25s ease;
+        }
+
+        /* Plotly chart background fix */
+        .js-plotly-plot .plotly .main-svg {
+            border-radius: var(--radius-sm);
         }
 
         </style>
@@ -533,25 +975,35 @@ def js_close_sidebar():
     </script>
     """
 
-def js_open_tab(tab_label: str) -> str:
-    """Return HTML+JS that tries to re-select a Streamlit tab by its label (robust against emoji)."""
-    # Use JSON encoding to avoid quote escaping issues
-    target = json.dumps(tab_label)
+def js_persist_tab(force_label: str = "") -> str:
+    """Return HTML+JS that persistently tracks the active tab.
+
+    If *force_label* is supplied (e.g. after an explicit st.rerun()),
+    that tab is selected first and saved.  Otherwise the last-known tab
+    from sessionStorage is restored.
+
+    A MutationObserver continually watches for tab clicks so that
+    every user-initiated tab switch is saved automatically.
+    """
+    force = json.dumps(force_label) if force_label else "null"
     return f"""
 <script>
 (function() {{
-  const target = {target};
+  const STORAGE_KEY = "spp_active_tab";
+  const forceLabel = {force};
+
   function norm(s) {{
     return (s || "")
       .toLowerCase()
       .replace(/[^a-z0-9 ]/g, " ")
-      .replace(/[\s]+/g, " ")
+      .replace(/[\\s]+/g, " ")
       .trim();
   }}
-  const want = norm(target);
-  function tryClick() {{
+
+  function clickTab(label) {{
     const doc = window.parent.document;
     const tabs = doc.querySelectorAll('[role="tab"], button[role="tab"]');
+    const want = norm(label);
     for (const t of tabs) {{
       const txt = norm(t.innerText || t.textContent);
       if (txt && (txt === want || txt.includes(want) || want.includes(txt))) {{
@@ -561,10 +1013,43 @@ def js_open_tab(tab_label: str) -> str:
     }}
     return false;
   }}
-  let tries = 0;
-  const timer = setInterval(() => {{
-    tries += 1;
-    if (tryClick() || tries > 25) clearInterval(timer);
+
+  /* Install click-listeners on every tab so we track user switches */
+  function installListeners() {{
+    const doc = window.parent.document;
+    const tabs = doc.querySelectorAll('[role="tab"], button[role="tab"]');
+    tabs.forEach(function(t) {{
+      if (!t.dataset.sppTracked) {{
+        t.dataset.sppTracked = "1";
+        t.addEventListener("click", function() {{
+          const raw = (t.innerText || t.textContent || "").trim();
+          if (raw) {{
+            try {{ window.parent.sessionStorage.setItem(STORAGE_KEY, raw); }} catch(e) {{}}
+          }}
+        }});
+      }}
+    }});
+    return tabs.length > 0;
+  }}
+
+  /* Determine which tab to restore */
+  var target = forceLabel;
+  if (!target) {{
+    try {{ target = window.parent.sessionStorage.getItem(STORAGE_KEY); }} catch(e) {{}}
+  }}
+  if (target) {{
+    try {{ window.parent.sessionStorage.setItem(STORAGE_KEY, target); }} catch(e) {{}}
+  }}
+
+  /* Retry loop – DOM may not be ready immediately */
+  var tries = 0;
+  var timer = setInterval(function() {{
+    tries++;
+    var ready = installListeners();
+    if (target && ready) {{
+      clickTab(target);
+    }}
+    if (tries > 30) clearInterval(timer);
   }}, 200);
 }})();
 </script>
@@ -4230,168 +4715,41 @@ def main():
 
 
 
-    # Page configuration is set at module import (must be first Streamlit command)
-    
-    # Custom CSS
-    st.markdown("""
-    <style>
-        /* Mobile-friendly spacing */
-        .stButton > button {
-            width: 100%;
-            margin: 5px 0;
-            min-height: 44px;
-        }
-        
-        /* Responsive metrics */
-        [data-testid="stMetricValue"] {
-            font-size: clamp(1.2rem, 4vw, 2rem);
-        }
-        
-        /* Smart header cards */
-        .metric-card {
-            padding: 15px;
-            border-radius: 10px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(255, 255, 255, 0.03);
-            margin-bottom: 10px;
-        }
-        
-        .metric-label {
-            font-size: 0.85rem;
-            opacity: 0.7;
-            margin-bottom: 5px;
-        }
-        
-        .metric-value {
-            font-size: clamp(1.5rem, 5vw, 2.5rem);
-            font-weight: 700;
-        }
-        
-        .metric-delta {
-            font-size: 0.9rem;
-            margin-top: 3px;
-        }
-        
-        /* Responsive tables */
-        .dataframe {
-            font-size: clamp(0.75rem, 2vw, 0.95rem);
-        }
-        
-        /* Sidebar styling */
-        section[data-testid="stSidebar"] {
-            background: linear-gradient(180deg, rgba(0,0,0,0.03) 0%, rgba(0,0,0,0.01) 100%);
-        }
-        
-        /* Warning boxes */
-        .warning-box {
-            padding: 15px;
-            border-left: 4px solid #ff8800;
-            background: rgba(255, 136, 0, 0.1);
-            border-radius: 5px;
-            margin: 10px 0;
-        }
-        
-        /* Success boxes */
-        .success-box {
-            padding: 15px;
-            border-left: 4px solid #00ff88;
-            background: rgba(0, 255, 136, 0.1);
-            border-radius: 5px;
-            margin: 10px 0;
-        }
-        
-        /* Section headers */
-        .section-header {
-            font-size: 1.5rem;
-            font-weight: 700;
-            margin: 20px 0 10px 0;
-            padding-bottom: 10px;
-            border-bottom: 2px solid rgba(255, 255, 255, 0.1);
-        }
-    
-@media (max-width: 768px){
-  section[data-testid="stSidebar"]{
-    background: rgba(15,23,42,0.995)!important;
-    backdrop-filter: none!important;
-    -webkit-backdrop-filter: none!important;
-  }
-  /* Ensure sidebar content readable on mobile */
-  section[data-testid="stSidebar"] *{
-    color: #e5e7eb;
-  }
-}
-</style>
-    """, unsafe_allow_html=True)
+    # All CSS is loaded via load_custom_css() – no duplicate inline styles
     
     # ========================================================================
     # SIDEBAR - Settings & Controls
     # ========================================================================
 
     with st.sidebar:
-        st.title("📈 Stock Picker Pro")
-        st.caption("v9.0 · Pokročilá kvantitativní analýza")
-        st.markdown("---")
-        
+        st.markdown("""
+        <div style="text-align: center; padding: 8px 0 4px 0;">
+            <span style="font-size: 2rem;">📈</span><br>
+            <span style="font-size: 1.1rem; font-weight: 800; background: linear-gradient(135deg, #00e68a, #00b4d8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Stock Picker Pro</span><br>
+            <span style="font-size: 0.72rem; color: #555d70; letter-spacing: 1.5px; text-transform: uppercase;">v10.0 · Quantitative Analysis</span>
+        </div>
+        """, unsafe_allow_html=True)
         st.markdown("---")
         
         # Ticker input (Form -> Enter submits)
-
-        
         with st.form("analyze_form", clear_on_submit=False):
-
-        
             default_ticker = st.session_state.get("last_ticker") or "AAPL"
-
-        
             _raw_ticker = st.text_input(
-
-        
                 "Ticker Symbol",
-
-        
                 value=str(default_ticker),
-
-        
                 help="Zadej ticker (např. AAPL, MSFT, GOOGL) a potvrď Enterem",
-
-        
                 max_chars=10,
-
-        
                 key="ticker_input",
-
-        
             )
-
-        
             ticker_input = (_raw_ticker or "").upper().strip()
-
-        
             analyze_btn = st.form_submit_button("🔍 Analyzovat", type="primary", use_container_width=True)
 
-        
-        
-
-        
         if analyze_btn:
-
-        
-            # Request sidebar close (mobile drawer) and rerun into RESULTS mode.
-
-        
             st.session_state.close_sidebar_js = True
-
-        
             st.session_state.sidebar_hidden = True
             st.session_state.ui_mode = "RESULTS"
-
-        
             st.session_state.selected_ticker = ticker_input
-
-        
             st.session_state["last_ticker"] = ticker_input
-
-        
             st.rerun()
         # Debug & Data settings
         debug_mode = st.checkbox("🧪 Debug mode", value=st.session_state.get("debug_mode", False),
@@ -4408,7 +4766,6 @@ def main():
             st.rerun()
 
         render_diagnostics_panel()
-        st.markdown("---")
         st.markdown("---")
         
         # DCF Settings
@@ -4938,9 +5295,10 @@ def main():
         "💼 Portfolio"
     ])
 
-    # Keep user on the tab they clicked (Streamlit rerun otherwise jumps to first tab)
-    if "force_tab_label" in st.session_state and st.session_state.force_tab_label:
-        components.html(js_open_tab(st.session_state.force_tab_label), height=0, width=0)
+    # Persistent tab tracking: always restore last active tab across re-renders
+    _force_label = st.session_state.get("force_tab_label") or ""
+    components.html(js_persist_tab(_force_label), height=0, width=0)
+    if _force_label:
         st.session_state.force_tab_label = None
 
     
@@ -5279,6 +5637,7 @@ def main():
                     # Uložení výsledku do session_state
                     st.session_state['ai_report'] = ai_report
                     st.session_state.ai_report_ticker = ticker
+                    st.session_state.force_tab_label = "🤖 AI Analyst"
                     st.rerun() # Refresh pro zobrazení výsledků
 
             # --- ZOBRAZENÍ VÝSLEDKŮ ---
@@ -6302,7 +6661,8 @@ def main():
             if st.button("🤖 AI Sentiment Summary", key="btn_news_sentiment"):
                 with st.spinner("Analyzuji sentiment zpráv..."):
                     sentiment_result = spp_news.analyze_news_sentiment_ai(
-                        news_articles[:6]
+                        news_articles[:6],
+                        gemini_api_key=GEMINI_API_KEY
                     )
                 if sentiment_result:
                     sc_col1, sc_col2 = st.columns(2)
@@ -6540,44 +6900,95 @@ def main():
 
 
 def display_welcome_screen():
-    """Display welcome screen when no ticker is selected."""
-    st.title("Vítej v Stock Picker Pro v10.0! 🚀")
-    
+    """Display premium welcome screen when no ticker is selected."""
+    # Hero section
     st.markdown("""
-    ### Pokročilá kvantitativní analýza akcií
-    
-    **🆕 Co je nového ve v10.0:**
-    - ✅ **Supabase integrace** – watchlist, memos, snapshoty a AI cache persistentně v cloudu
-    - ✅ **Live makro data (FRED)** – Fed Funds Rate, CPI, unemployment, GDP v reálném čase
-    - ✅ **Automatický news feed** – NewsAPI + Polygon.io s AI sentiment analýzou
-    - ✅ **Interaktivní candlestick chart** – OHLC, RSI, MACD, Bollinger Bands, MA50/200
-    - ✅ **Twelve Data fallback** – ověření tech. indikátorů z profesionálního zdroje
-    - ✅ **Enhanced AI Analyst** – Gemini s makro kontextem a news sentimentem
-    - ✅ **AI report cache** – Supabase cache (6h TTL) pro rychlejší opakované analýzy
-    - ✅ **Mini Stock Screener** – prohledej 50 US akcií s filtry (P/E, ROE, dividenda...)
-    - ✅ **Portfolio Tracker** – spravuj své pozice s P&L a sektorovou diverzifikací
-    - ✅ **Auto snapshoty** – metriky automaticky ukládány při každé analýze
-    
-    **Jak začít:**
-    1. ⬅️ Zadej ticker symbol v levém panelu (např. AAPL, BTC-USD, NVDA)
-    2. Klikni na "🔍 Analyzovat"
-    3. Prohlédni si všech 11 tabů s pokročilými analýzami
-    
-    """)
-    
-    # Sample tickers
-    st.markdown("### 💡 Populární tickery na vyzkoušení")
-    cols = st.columns(4)
+    <div class="hero-container">
+        <div class="hero-title">Stock Picker Pro</div>
+        <div class="hero-subtitle">
+            Kvantitativní analýza akcií nové generace.<br>
+            DCF, Monte Carlo, AI Analyst, technické indikátory a mnohem víc – vše na jednom místě.
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Feature cards
+    st.markdown('<div class="section-header">🆕 Klíčové funkce v10.0</div>', unsafe_allow_html=True)
+    fc1, fc2, fc3, fc4 = st.columns(4)
+    features = [
+        (fc1, "🤖", "AI Analyst", "Gemini-powered hloubkové reporty s makro kontextem a news sentimentem"),
+        (fc2, "📊", "DCF & Monte Carlo", "Pokročilé oceňovací modely s 1 000 simulacemi"),
+        (fc3, "🔍", "Stock Screener", "Prohledej 50+ akcií s filtry P/E, ROE, dividenda a víc"),
+        (fc4, "📰", "Live Macro & News", "FRED makro data, NewsAPI feed s AI sentiment analýzou"),
+    ]
+    for col, icon, title, desc in features:
+        with col:
+            st.markdown(f"""
+            <div class="feature-card">
+                <span class="feature-icon">{icon}</span>
+                <div class="feature-title">{title}</div>
+                <div class="feature-desc">{desc}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    st.markdown("")
+    fc5, fc6, fc7, fc8 = st.columns(4)
+    features2 = [
+        (fc5, "💼", "Portfolio Tracker", "Spravuj pozice s P&L, sektorová diverzifikace"),
+        (fc6, "🕵️", "Insider Signals", "Multi-source insider data s cluster detekcí"),
+        (fc7, "📈", "Technická analýza", "RSI, MACD, Bollinger Bands, MA50/200 interaktivně"),
+        (fc8, "☁️", "Cloud Sync", "Supabase watchlist, memos, snapshoty a AI cache"),
+    ]
+    for col, icon, title, desc in features2:
+        with col:
+            st.markdown(f"""
+            <div class="feature-card">
+                <span class="feature-icon">{icon}</span>
+                <div class="feature-title">{title}</div>
+                <div class="feature-desc">{desc}</div>
+            </div>
+            """, unsafe_allow_html=True)
+
+    # Quick start guide
+    st.markdown("")
+    st.markdown('<div class="section-header">🚀 Jak začít</div>', unsafe_allow_html=True)
+    st.markdown("""
+    <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-bottom: 24px;">
+        <div style="flex: 1; min-width: 200px;">
+            <div style="font-size: 2rem; margin-bottom: 6px;">①</div>
+            <div style="font-weight: 700; margin-bottom: 4px;">Zadej ticker</div>
+            <div style="color: #8b92a5; font-size: 0.85rem;">Napiš symbol do levého panelu (AAPL, NVDA, BTC-USD...)</div>
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+            <div style="font-size: 2rem; margin-bottom: 6px;">②</div>
+            <div style="font-weight: 700; margin-bottom: 4px;">Analyzuj</div>
+            <div style="color: #8b92a5; font-size: 0.85rem;">Klikni "Analyzovat" nebo stiskni Enter</div>
+        </div>
+        <div style="flex: 1; min-width: 200px;">
+            <div style="font-size: 2rem; margin-bottom: 6px;">③</div>
+            <div style="font-weight: 700; margin-bottom: 4px;">Prozkoumej</div>
+            <div style="color: #8b92a5; font-size: 0.85rem;">11 tabů: Overview, DCF, AI, Macro, Screener a víc</div>
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Popular tickers
+    st.markdown('<div class="section-header">💡 Populární tickery</div>', unsafe_allow_html=True)
+    cols = st.columns(8)
     samples = ["AAPL", "MSFT", "GOOGL", "AMZN", "TSLA", "NVDA", "META", "BTC-USD"]
-    
     for i, ticker in enumerate(samples):
-        with cols[i % 4]:
+        with cols[i]:
             if st.button(ticker, use_container_width=True, key=f"sample_{ticker}"):
                 st.session_state["last_ticker"] = ticker
                 st.rerun()
-    
-    st.markdown("---")
-    st.info("💡 **Pro AI analýzu** nastav GEMINI_API_KEY v secrets a získej hloubkové AI reporty!")
+
+    # AI tip
+    st.markdown("")
+    st.markdown("""
+    <div class="info-box">
+        💡 <strong>Pro AI analýzu</strong> nastav <code>GEMINI_API_KEY</code> v <code>.streamlit/secrets.toml</code> a získej hloubkové AI reporty!
+    </div>
+    """, unsafe_allow_html=True)
 
 
 if __name__ == "__main__":
